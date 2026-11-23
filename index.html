@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>ふたりで一隻</title>
+<meta name="theme-color" content="#070812">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
+<style>
+:root {
+  --void: #070812; --panel: rgba(16,18,31,0.92); --line: #2b3050; --ink: #e6e9f7; --dim: #8b90b3; --accent: #ffb547; --cyan: #7ff6ff; --red: #ff4a62;
+  --font: "DotGothic16", "Hiragino Kaku Gothic ProN", monospace;
+  --uih: 100%;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink); font-family: var(--font); overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+[hidden] { display: none !important; }
+#cv { position: fixed; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+#ui { position: fixed; left: 0; right: 0; top: 0; height: var(--uih); display: grid; place-items: center; pointer-events: none; padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left)); }
+.screen { pointer-events: auto; width: min(560px, 100%); max-height: 100%; overflow: auto; background: var(--panel); border: 2px solid var(--line); padding: clamp(12px, 3vmin, 24px); display: flex; flex-direction: column; gap: clamp(8px, 1.8vmin, 14px); box-shadow: 0 0 0 4px rgba(7,8,18,0.6); }
+.screen.clear { background: transparent; border-color: transparent; box-shadow: none; }
+h1 { margin: 0; font-weight: 400; font-size: clamp(30px, 8vmin, 56px); letter-spacing: .08em; line-height: 1.1; text-shadow: 3px 3px 0 #2a1040; }
+h1 b { color: var(--accent); font-weight: 400; }
+h2 { margin: 0; font-weight: 400; font-size: clamp(20px, 4.5vmin, 30px); color: var(--accent); }
+p { margin: 0; line-height: 1.55; font-size: clamp(13px, 2.6vmin, 16px); }
+.sub { color: var(--dim); }
+nav { display: flex; flex-direction: column; gap: 8px; }
+button { font: inherit; font-size: clamp(15px, 3.2vmin, 20px); color: var(--ink); background: rgba(7,8,18,0.6); border: 2px solid var(--line); padding: clamp(6px, 1.6vmin, 10px) 14px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+button small { font-size: .7em; color: var(--dim); }
+button:hover { border-color: var(--dim); }
+button.focus { border-color: var(--accent); color: #fff; box-shadow: inset 4px 0 0 var(--accent); }
+button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em; color: var(--accent); }
+.code { font-size: clamp(48px, 14vmin, 96px); letter-spacing: .25em; color: var(--cyan); text-align: center; text-shadow: 4px 4px 0 #0b2340; }
+.slots { display: flex; justify-content: center; gap: 10px; }
+.slots span { width: clamp(46px, 13vmin, 72px); height: clamp(60px, 16vmin, 92px); display: grid; place-items: center; font-size: clamp(36px, 10vmin, 60px); border: 2px solid var(--line); background: rgba(7,8,18,0.7); color: var(--cyan); position: relative; }
+.slots span.on { border-color: var(--accent); }
+.slots span.on::before, .slots span.on::after { position: absolute; left: 0; right: 0; text-align: center; font-size: 14px; color: var(--accent); }
+.slots span.on::before { content: "▲"; top: -20px; } .slots span.on::after { content: "▼"; bottom: -20px; }
+#codeInput { position: absolute; opacity: 0; pointer-events: none; }
+.hint { color: var(--dim); font-size: clamp(12px, 2.3vmin, 14px); }
+.err { color: var(--red); min-height: 1.4em; }
+.roles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.role { border: 2px solid var(--line); padding: 10px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; background: rgba(7,8,18,0.6); }
+.role h3 { margin: 0; font-weight: 400; font-size: clamp(18px, 4vmin, 24px); }
+.role p { font-size: clamp(11px, 2.2vmin, 13px); color: var(--dim); }
+.role .who { font-size: clamp(12px, 2.4vmin, 15px); min-height: 1.4em; color: var(--cyan); }
+.role.cur { border-color: var(--accent); }
+.role.mine { background: rgba(255,181,71,0.12); }
+.role.theirs { background: rgba(127,246,255,0.08); }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cols h3 { margin: 0 0 4px; font-weight: 400; color: var(--cyan); font-size: clamp(15px, 3vmin, 18px); }
+.cols dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: clamp(12px, 2.3vmin, 14px); }
+.cols dt { color: var(--accent); } .cols dd { margin: 0; }
+.stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: clamp(14px, 3vmin, 18px); }
+.stats dt { color: var(--dim); } .stats dd { margin: 0; }
+.bar { height: 10px; border: 2px solid var(--line); background: #10121f; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+.row { display: flex; align-items: center; gap: 10px; font-size: clamp(14px, 2.8vmin, 17px); }
+.row input[type=range] { flex: 1; accent-color: var(--accent); }
+.foot { color: var(--dim); font-size: clamp(11px, 2.2vmin, 13px); }
+@media (max-width: 520px) { .cols, .roles { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="ui">
+  <section class="screen" id="s-load">
+    <h1>ふたりで<b>一隻</b></h1>
+    <p class="sub" id="loadText">宇宙船を組み立てています…</p>
+    <div class="bar"><i id="loadBar"></i></div>
+  </section>
+
+  <section class="screen clear" id="s-title" hidden>
+    <h1>ふたりで<b>一隻</b></h1>
+    <p class="sub">2人で1隻の宇宙船を動かす、協力シューティング（デモ版）</p>
+    <nav>
+      <button data-go="host">ルームをつくる<small>コードを出して、相手を待つ</small></button>
+      <button data-go="join">コードで参加<small>相手のコードを入れる</small></button>
+      <button data-go="solo">ソロ（お試し）<small>片方の役だけを体験</small></button>
+      <button data-go="howto">そうさ説明</button>
+      <button data-go="settings">せってい</button>
+    </nav>
+    <p class="foot" id="padStatus"></p>
+  </section>
+
+  <section class="screen" id="s-host" hidden>
+    <h2>ルームコード</h2>
+    <div class="code" id="hostCode">····</div>
+    <p id="hostStatus" class="sub">準備しています…</p>
+    <nav><button data-back>もどる</button></nav>
+  </section>
+
+  <section class="screen" id="s-join" hidden>
+    <h2>コードで参加</h2>
+    <div class="slots" id="slots"><span>A</span><span>A</span><span>A</span><span>A</span></div>
+    <input id="codeInput" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="ルームコード">
+    <p class="hint">十字キー ↑↓ で文字、←→ で場所をかえて A で参加。キーボードなら そのまま打てます。</p>
+    <p class="err" id="joinStatus"></p>
+    <nav><button id="joinGo">参加する</button><button id="joinType">キーボードで入力</button><button data-back>もどる</button></nav>
+  </section>
+
+  <section class="screen" id="s-lobby" hidden>
+    <h2>役をえらぶ</h2>
+    <div class="roles">
+      <div class="role" data-role="pilot"><h3>パイロット</h3><p>コントローラー（横画面）。船を動かして、よける。</p><div class="who"></div></div>
+      <div class="role" data-role="gunner"><h3>ガンナー</h3><p>ポケットタコ（縦画面）。コンボを入れて撃つ。</p><div class="who"></div></div>
+    </div>
+    <p class="hint">←→ でえらんで A で決定。2人そろったら ホストが START で出発。</p>
+    <p class="sub" id="lobbyStatus"></p>
+    <nav><button id="lobbyStart">出発する（START）</button><button data-back>やめる</button></nav>
+  </section>
+
+  <section class="screen" id="s-solo" hidden>
+    <h2>ソロ（お試し）</h2>
+    <nav>
+      <button data-solo="pilot">パイロットのお試し<small>ガンナーは自動でずっと撃ち続ける</small></button>
+      <button data-solo="gunner">ガンナーのお試し<small>トレーニング：船は自動でよけ続ける</small></button>
+      <button data-back>もどる</button>
+    </nav>
+  </section>
+
+  <section class="screen" id="s-howto" hidden>
+    <h2>そうさ説明</h2>
+    <div class="cols">
+      <div><h3>パイロット（コントローラー）</h3><dl>
+        <dt>スティック／十字</dt><dd>移動</dd><dt>A</dt><dd>回避ロール（一瞬むてき）</dd><dt>B</dt><dd>シールド（エネルギーを使う）</dd>
+        <dt>RT</dt><dd>加速（エネルギーを使う）</dd><dt>X</dt><dd>ガンナーに合図</dd><dt>START</dt><dd>ポーズ</dd></dl></div>
+      <div><h3>ガンナー（ポケットタコ）</h3><dl>
+        <dt>十字＋ABXY</dt><dd>画面下のコンボを順番に入れると発射</dd><dt>L1／R1</dt><dd>ねらう敵をかえる</dd>
+        <dt>R2</dt><dd>チャージ砲（エネルギー60で、範囲の敵すべてに1発）</dd><dt>SELECT</dt><dd>パイロットに合図</dd><dt>START</dt><dd>ポーズ</dd></dl></div>
+    </div>
+    <p class="hint">砲台は船の前のほう（扇形の中）しかねらえません。パイロットは敵を扇形に入れてあげてください。まちがえると少しのあいだ「ジャム」になります。キーボード：矢印=十字 X=A Z=B S=X A=Y Q=L1 R=R1 E=R2 Enter=START Shift=SELECT</p>
+    <nav><button data-back>もどる</button></nav>
+  </section>
+
+  <section class="screen" id="s-settings" hidden>
+    <h2>せってい</h2>
+    <div class="row"><label for="vis">ポケットタコの見える範囲</label><input type="range" id="vis" min="40" max="100" step="2"><span id="visV"></span></div>
+    <p class="hint">スマホを縦にしたときだけ使います。画面の上から何％が見えるかに合わせてください。</p>
+    <nav><button id="soundBtn">音：オン</button><button data-back>もどる</button></nav>
+  </section>
+
+  <section class="screen" id="s-pause" hidden>
+    <h2>ポーズ</h2>
+    <p class="sub" id="pauseInfo"></p>
+    <nav><button id="pResume">つづける</button><button id="pSwap">役をかえる<small>パイロット ⇄ ガンナー</small></button><button id="pQuit">タイトルへ</button></nav>
+  </section>
+
+  <section class="screen" id="s-result" hidden>
+    <h2 id="rTitle"></h2>
+    <dl class="stats" id="rStats"></dl>
+    <p class="sub" id="rNote"></p>
+    <nav><button id="rAgain">もう一度</button><button id="rQuit">タイトルへ</button></nav>
+  </section>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="js/models.js"></script>
+<script src="js/models2.js"></script>
+<script src="js/stack.js"></script>
+<script src="js/input.js"></script>
+<script src="js/net.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/views.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

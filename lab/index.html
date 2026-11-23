@@ -1,0 +1,460 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sprite Stack Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* Layout: a ship's console — header strip, view tabs, one big viewport, controls docked under it. Single dark space look by choice. */
+:root {
+  --void: #070812;
+  --panel: #10121f;
+  --line: #262a44;
+  --ink: #e6e9f7;
+  --dim: #8b90b3;
+  --accent: #ffb547;
+  --cyan: #7ff6ff;
+  --dyn: #c69bff;
+  --font-display: "DotGothic16", "Hiragino Kaku Gothic ProN", monospace;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", system-ui, sans-serif;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--void); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.6; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 18px 40px; display: flex; flex-direction: column; gap: 14px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: 26px; letter-spacing: .04em; margin: 0; }
+h1 b { color: var(--accent); font-weight: 400; }
+header p { margin: 0; color: var(--dim); }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tab { font-family: var(--font-display); font-size: 15px; color: var(--dim); background: transparent; border: 1px solid var(--line); padding: 6px 14px; cursor: pointer; }
+.tab[aria-selected="true"] { color: var(--void); background: var(--accent); border-color: var(--accent); }
+.tab:focus-visible, .tool:focus-visible, .card:focus-visible, .nav:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; }
+.tools label { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
+.tools input[type=range] { width: 140px; accent-color: var(--accent); }
+.tool { font-family: var(--font-body); font-size: 13px; color: var(--dim); background: transparent; border: 1px solid var(--line); padding: 4px 10px; cursor: pointer; }
+.tool[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.seg { display: inline-flex; }
+.seg .tool + .tool { border-left: 0; }
+.val { font-family: var(--font-display); color: var(--ink); min-width: 3ch; font-variant-numeric: tabular-nums; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.card { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); padding: 0; cursor: pointer; text-align: left; color: var(--ink); font: inherit; }
+.card:hover { border-color: var(--dim); }
+.card canvas { width: 100%; aspect-ratio: 1; display: block; }
+.card .meta { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 6px 10px 8px; border-top: 1px solid var(--line); }
+.card .nm { font-family: var(--font-display); font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { font-size: 11px; padding: 0 6px; border: 1px solid currentColor; white-space: nowrap; letter-spacing: .04em; }
+.chip.static { color: var(--dim); }
+.chip.dynamic { color: var(--dyn); }
+.chip.role { color: var(--accent); }
+.detail { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; }
+.stage { position: relative; background: var(--panel); border: 1px solid var(--line); min-width: 0; }
+.stage canvas { width: 100%; height: min(68vh, 600px); display: block; touch-action: none; cursor: grab; }
+.stage canvas:active { cursor: grabbing; }
+.hint { position: absolute; left: 10px; bottom: 8px; color: var(--dim); font-size: 12px; pointer-events: none; text-shadow: 0 1px 0 var(--void); }
+.info { background: var(--panel); border: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.info h2 { font-family: var(--font-display); font-weight: 400; font-size: 22px; margin: 0; text-wrap: balance; }
+.info .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.info p { margin: 0; }
+.stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; color: var(--dim); margin: 0; }
+.stats dd { margin: 0; color: var(--ink); font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.navrow { display: flex; gap: 8px; margin-top: auto; }
+.nav { flex: 1; font-family: var(--font-display); font-size: 15px; color: var(--ink); background: transparent; border: 1px solid var(--line); padding: 8px; cursor: pointer; }
+.nav:hover { border-color: var(--accent); }
+.thumbs { display: flex; flex-wrap: wrap; gap: 4px; }
+.thumbs button { font-size: 11px; padding: 2px 6px; background: transparent; color: var(--dim); border: 1px solid var(--line); cursor: pointer; font-family: var(--font-body); }
+.thumbs button[aria-current="true"] { color: var(--void); background: var(--accent); border-color: var(--accent); }
+.scene canvas { height: min(72vh, 640px); }
+.note { color: var(--dim); font-size: 13px; margin: 0; max-width: 70ch; }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; background: var(--void); font-family: var(--font-display); font-size: 18px; color: var(--accent); z-index: 5; }
+@media (max-width: 760px) {
+  .detail { grid-template-columns: 1fr; }
+  .stage canvas { height: 56vh; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+
+<div id="loading">輪切りを作っています…</div>
+<div class="wrap">
+  <header>
+    <h1>SPRITE STACK <b>LAB</b></h1>
+    <p>宇宙の協力ゲーム用・スプライトスタッキング試作（23種・惑星つき）</p>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-gallery" aria-selected="true" data-view="gallery">一覧</button>
+    <button class="tab" role="tab" id="t-detail" aria-selected="false" data-view="detail">1つずつ見る</button>
+    <button class="tab" role="tab" id="t-scene" aria-selected="false" data-view="scene">ならべたシーン</button>
+  </div>
+
+  <div class="tools">
+    <span class="seg" role="group" aria-label="版を切りかえる"><button class="tool" id="b-v2" aria-pressed="true">新しい版（細かい・光あり）</button><button class="tool" id="b-v1" aria-pressed="false">前の版</button></span>
+    <label for="elev">カメラの角度 <input type="range" id="elev" min="15" max="90" value="42"><span class="val" id="elevV">42°</span></label>
+    <button class="tool" id="b-auto" aria-pressed="true">自動で回す</button>
+    <button class="tool" id="b-anim" aria-pressed="true">アニメ</button>
+    <button class="tool" id="b-outline" aria-pressed="true">ふちどり</button>
+    <button class="tool" id="b-glow" aria-pressed="true">発光</button>
+    <button class="tool" id="b-explode" aria-pressed="false">輪切りをひろげる</button>
+  </div>
+
+  <section id="v-gallery">
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section id="v-detail" hidden>
+    <div class="detail">
+      <div class="stage"><canvas id="cv-detail"></canvas><div class="hint">ドラッグ：左右で回す・上下で角度　ホイール／ピンチ：拡大縮小　ダブルクリック：もとに戻す</div></div>
+      <aside class="info">
+        <h2 id="d-name"></h2>
+        <div class="chips" id="d-chips"></div>
+        <p id="d-desc"></p>
+        <dl class="stats">
+          <dt>大きさ</dt><dd id="d-size"></dd>
+          <dt>輪切りの枚数</dt><dd id="d-slices"></dd>
+          <dt>アニメのコマ</dt><dd id="d-frames"></dd>
+          <dt>表示の倍率</dt><dd id="d-scale"></dd>
+        </dl>
+        <div class="thumbs" id="d-list"></div>
+        <div class="navrow"><button class="nav" id="d-prev">◀ まえ</button><button class="nav" id="d-next">つぎ ▶</button></div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="v-scene" hidden>
+    <div class="stage scene"><canvas id="cv-scene"></canvas><div class="hint">パイロット画面のイメージ。カメラはふたり号を追いかける。ドラッグで回す・角度、ホイール／ピンチで拡大縮小</div></div>
+  </section>
+
+  <p class="note">どれも「真上から見た輪切りの絵」を下から重ねて、同じ角度で回しているだけです。3Dモデルは使っていません。「輪切りをひろげる」を押すと、重なっている輪切りが見えます。</p>
+  <p class="note">新しい版は、細かさが2倍（輪切りの枚数も2倍）です。左上から恒星の光、右うしろから星雲の青い光が当たります。物を回しても光の向きは変わらないので、回すと明るい面と暗い面が入れかわります。</p>
+</div>
+
+<script src="../js/models.js"></script>
+<script src="../js/models2.js"></script>
+<script>
+(() => {
+const { MODELS, bakeModel, TAU } = window.SS;
+const $ = id => document.getElementById(id);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const S = { ver: 2, view: 'gallery', elev: 42, auto: !reduce, anim: true, outline: true, glow: true, explode: false, cur: 0, ang: -0.6, zoom: 1, yaw: 0, szoom: 1 };
+const OUT = [7, 6, 13];
+
+const SS2 = window.SS2;
+const SETS = { 1: MODELS, 2: SS2.MODELS };
+const models = () => SETS[S.ver];
+const baked = { 1: false, 2: false };
+function bakeSet(v) { if (baked[v]) return; for (const m of SETS[v]) (v === 2 ? SS2.bakeModel : bakeModel)(m); baked[v] = true; }
+
+// ---------- stack renderer ----------
+function ensureArt(m) {
+  if (m.art) return;
+  const Sz = Math.ceil(m.diag) + 4, H = Sz + m.d * 3 + 6;
+  m.S = Sz; m.H = H;
+  m.art = document.createElement('canvas'); m.art.width = Sz; m.art.height = H;
+  m.actx = m.art.getContext('2d', { willReadFrequently: true });
+  if (m.lit) { m.nrm = document.createElement('canvas'); m.nrm.width = Sz; m.nrm.height = H; m.nctx = m.nrm.getContext('2d', { willReadFrequently: true }); }
+  m.gart = document.createElement('canvas'); m.gart.width = Sz; m.gart.height = H;
+  m.gctx = m.gart.getContext('2d');
+}
+function lift(elev) { return Math.cos(elev) * (S.explode ? 3 : 1); }
+function renderArt(m, fi, ang, elev) {
+  ensureArt(m);
+  const fr = m.frames[fi], sq = Math.sin(elev), lf = lift(elev);
+  const cx = m.S / 2, cy = m.H - m.S / 2 - 2;
+  const draw = (ctx, list, part) => {
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, m.S, m.H); ctx.imageSmoothingEnabled = false;
+    for (let z = 0; z < fr.d; z++) {
+      const s = list[z]; if (!s) continue;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.translate(cx, cy - Math.round(z * lf)); ctx.scale(1, sq); ctx.rotate(ang);
+      if (s.c) ctx.drawImage(s.c, part * s.bw, 0, s.bw, s.bh, -fr.w / 2 + s.ox, -fr.h / 2 + s.oy, s.bw, s.bh);
+      else ctx.drawImage(s, -fr.w / 2, -fr.h / 2);
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  };
+  draw(m.actx, fr.slices, 0);
+  if (m.lit) { draw(m.nctx, fr.slices, 1); shade(m, ang, elev); }
+  else if (S.outline) { const img = m.actx.getImageData(0, 0, m.S, m.H); outlineData(img.data, null, m.S, m.H); m.actx.putImageData(img, 0, 0); }
+  const glow = S.glow && fr.hasGlow;
+  if (glow) draw(m.gctx, fr.glows, 0);
+  return { cx, cy, glow };
+}
+function outlineData(d, a, w, h) {
+  if (!a) { a = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) a[i] = d[i * 4 + 3] > 0 ? 1 : 0; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; if (a[i]) continue;
+    if ((x > 0 && a[i - 1]) || (x < w - 1 && a[i + 1]) || (y > 0 && a[i - w]) || (y < h - 1 && a[i + w])) {
+      d[i * 4] = OUT[0]; d[i * 4 + 1] = OUT[1]; d[i * 4 + 2] = OUT[2]; d[i * 4 + 3] = 255;
+    }
+  }
+}
+// per-pixel lighting for v2: sun from the upper left, cool fill from behind right, ambient from all around
+const nrm3 = (x, y, z) => { const l = Math.hypot(x, y, z); return [x / l, y / l, z / l]; };
+const SUN = nrm3(-0.62, 0.28, 0.73), FILL = nrm3(0.75, -0.55, 0.25);
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+function shade(m, ang, elev) {
+  const w = m.S, h = m.H, A = m.actx.getImageData(0, 0, w, h), N = m.nctx.getImageData(0, 0, w, h), a = A.data, n = N.data;
+  const c = Math.cos(ang), s = Math.sin(ang), HV = nrm3(SUN[0], SUN[1] + Math.cos(elev), SUN[2] + Math.sin(elev));
+  const { LUT, SPEC, EMC, STEPS, IMAX } = SS2, mask = new Uint8Array(w * h), dith = IMAX / STEPS * 0.9;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const p = y * w + x, i = p * 4; if (!a[i + 3]) continue;
+    const id = a[i], em = EMC[id];
+    if (a[i + 3] < 250 || (!em && !LUT[id])) { a[i + 3] = 0; continue; }
+    mask[p] = 1;
+    if (em) { a[i] = em[0]; a[i + 1] = em[1]; a[i + 2] = em[2]; continue; }
+    const nx = n[i] / 127.5 - 1, ny = n[i + 1] / 127.5 - 1, nz = n[i + 2] / 127.5 - 1;
+    const wx = nx * c - ny * s, wy = nx * s + ny * c;
+    const ao = a[i + 1] / 200, v = a[i + 2] / 170;
+    const nl = wx * SUN[0] + wy * SUN[1] + nz * SUN[2];
+    let I = (0.3 + 0.1 * nz +(nl > -0.2 ? (nl + 0.2) / 1.2 : 0) * 0.95) * ao * v;
+    const sp = SPEC[id];
+    if (sp && nl > 0) { const nh = wx * HV[0] + wy * HV[1] + nz * HV[2]; if (nh > 0) I += sp * Math.pow(nh, 28); }
+    I += (BAYER[(y & 3) * 4 + (x & 3)] / 16 - 0.47) * dith;
+    let k = Math.round(I / IMAX * (STEPS - 1)); k = k < 0 ? 0 : k >= STEPS ? STEPS - 1 : k;
+    const col = LUT[id][k];
+    let r = col[0], g = col[1], b = col[2];
+    const fl = wx * FILL[0] + wy * FILL[1] + nz * FILL[2];
+    if (fl > 0.2) { const q = Math.round((fl - 0.2) * 4) / 4 * 0.55 * Math.min(1, ao); r += 40 * q; g += 70 * q; b += 150 * q; }
+    a[i] = r; a[i + 1] = g; a[i + 2] = b;
+  }
+  if (S.outline) outlineData(a, mask, w, h);
+  m.actx.putImageData(A, 0, 0);
+}
+// draw model so its base centre lands on (bx, by) in device px
+function blit(ctx, m, fi, ang, elev, bx, by, scale) {
+  const r = renderArt(m, fi, ang, elev);
+  const dx = Math.round(bx - r.cx * scale), dy = Math.round(by - r.cy * scale);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(m.art, dx, dy, m.S * scale, m.H * scale);
+  if (r.glow) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.85;
+    ctx.filter = `blur(${Math.max(2, scale * 1.8)}px)`;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(m.gart, dx, dy, m.S * scale, m.H * scale);
+    ctx.restore();
+  }
+}
+function visSize(m, elev) { return { w: m.diag, h: m.diag * Math.sin(elev) + m.d * lift(elev) }; }
+function frameOf(m, t, phase = 0) { return (m.F > 1 && S.anim) ? Math.floor(t * (m.fps || 10) + phase) % m.F : 0; }
+function bobOf(m, t, phase = 0) { return (m.bob && S.anim) ? Math.sin(t * 1.7 + phase) * m.bob * (m.K || 1) : 0; }
+
+// ---------- canvases & background ----------
+function fitCanvas(cv) {
+  const r = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; cv._bg = null; }
+  return dpr;
+}
+function makeBg(cv, seed) {
+  const w = cv.width, h = cv.height, b = document.createElement('canvas'); b.width = w; b.height = h;
+  const g = b.getContext('2d');
+  g.fillStyle = '#070812'; g.fillRect(0, 0, w, h);
+  let s = seed * 9301 + 49297; const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  const neb = [['rgba(120,60,180,0.16)', rnd() * w, rnd() * h], ['rgba(40,110,170,0.14)', rnd() * w, rnd() * h]];
+  for (const [c, x, y] of neb) { const gr = g.createRadialGradient(x, y, 0, x, y, Math.max(w, h) * 0.6); gr.addColorStop(0, c); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }
+  const stars = [];
+  const n = Math.round(w * h / 2600);
+  for (let i = 0; i < n; i++) stars.push({ x: rnd(), y: rnd(), z: 0.2 + rnd() * 0.8, b: rnd() });
+  cv._bg = b; cv._stars = stars;
+}
+function drawBg(ctx, cv, seed, ox = 0, oy = 0, rot = 0, px = 1) {
+  if (!cv._bg) makeBg(cv, seed);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.filter = 'none'; ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(cv._bg, 0, 0);
+  const w = cv.width, h = cv.height, cr = Math.cos(rot), sr = Math.sin(rot);
+  for (const st of cv._stars) {
+    let x = (st.x - 0.5) * w * 1.5, y = (st.y - 0.5) * h * 1.5;
+    let rx = x * cr - y * sr - ox * st.z, ry = x * sr + y * cr - oy * st.z;
+    const W = w * 1.5, Hh = h * 1.5;
+    rx = ((rx + W / 2) % W + W) % W - W / 2 + w / 2; ry = ((ry + Hh / 2) % Hh + Hh) % Hh - Hh / 2 + h / 2;
+    const sz = st.z > 0.85 ? 2 * px : px;
+    ctx.fillStyle = st.b > 0.92 ? '#ffd9a0' : st.b > 0.8 ? '#a8e8ff' : `rgba(220,225,255,${0.35 + st.z * 0.6})`;
+    ctx.fillRect(Math.round(rx), Math.round(ry), sz, sz);
+  }
+}
+
+// ---------- gallery ----------
+const grid = $('grid'), cards = [];
+MODELS.forEach((m, i) => {
+  const b = document.createElement('button'); b.className = 'card'; b.type = 'button';
+  b.setAttribute('aria-label', `${m.jp}（${m.role}・${m.kind === 'dynamic' ? '動的' : '静的'}）を大きく見る`);
+  b.innerHTML = `<canvas></canvas><span class="meta"><span class="nm">${m.jp}</span><span class="chip ${m.kind}">${m.kind === 'dynamic' ? '動的' : '静的'}</span></span>`;
+  b.addEventListener('click', () => { S.cur = i; setView('detail'); });
+  grid.appendChild(b);
+  cards.push({ m, cv: b.querySelector('canvas'), vis: true, phase: i * 0.7 });
+});
+const io = new IntersectionObserver(es => es.forEach(e => { const c = cards.find(c => c.cv === e.target); if (c) c.vis = e.isIntersecting; }));
+cards.forEach(c => io.observe(c.cv));
+function drawGallery(t) {
+  const elev = S.elev * Math.PI / 180;
+  cards.forEach((c, i) => {
+    const m = models()[i];
+    if (!c.vis || !m.frames) return;
+    const dpr = fitCanvas(c.cv), ctx = c.cv.getContext('2d');
+    drawBg(ctx, c.cv, i + 3, 0, 0, 0, Math.round(dpr));
+    const v = visSize(m, elev);
+    const sc = Math.max(1, Math.floor(Math.min(c.cv.width * 0.86 / v.w, c.cv.height * 0.8 / v.h)));
+    const bx = c.cv.width / 2, by = c.cv.height / 2 + (m.d * lift(elev)) * sc / 2 + bobOf(m, t, c.phase) * sc;
+    blit(ctx, m, frameOf(m, t, c.phase * 3), -0.6 + (S.auto ? t * 0.55 : 0), elev, bx, by, sc);
+  });
+}
+
+// ---------- detail ----------
+const dcv = $('cv-detail');
+const dl = $('d-list');
+MODELS.forEach((m, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = m.jp; b.addEventListener('click', () => { S.cur = i; fillInfo(); }); dl.appendChild(b); });
+function fillInfo() {
+  const m = models()[S.cur];
+  $('d-name').textContent = m.jp;
+  $('d-chips').innerHTML = `<span class="chip role">${m.role}</span><span class="chip ${m.kind}">${m.kind === 'dynamic' ? '動的' : '静的'}</span>`;
+  $('d-desc').textContent = m.desc;
+  $('d-size').textContent = `${m.w} × ${m.h} × ${m.d}`;
+  $('d-slices').textContent = `${m.slices ?? '-'} 枚`;
+  $('d-frames').textContent = m.F > 1 ? `${m.F} コマ` : 'なし（静止）';
+  [...dl.children].forEach((b, i) => b.setAttribute('aria-current', i === S.cur ? 'true' : 'false'));
+}
+$('d-prev').onclick = () => { S.cur = (S.cur + MODELS.length - 1) % MODELS.length; fillInfo(); };
+$('d-next').onclick = () => { S.cur = (S.cur + 1) % MODELS.length; fillInfo(); };
+let lastScale = 0;
+function drawDetail(t, dt) {
+  const m = models()[S.cur]; if (!m.frames) return;
+  const dpr = fitCanvas(dcv), ctx = dcv.getContext('2d'), elev = S.elev * Math.PI / 180;
+  if (S.auto && !drag.active) S.ang += dt * 0.5;
+  drawBg(ctx, dcv, 1, 0, 0, S.ang * 0.25, Math.round(dpr));
+  const v = visSize(m, elev);
+  const fit = Math.min(dcv.width * 0.8 / v.w, dcv.height * 0.78 / v.h);
+  const sc = Math.max(1, Math.round(fit * S.zoom));
+  if (sc !== lastScale) { lastScale = sc; $('d-scale').textContent = `${sc} 倍`; }
+  const bx = dcv.width / 2, by = dcv.height / 2 + (m.d * lift(elev)) * sc / 2 + bobOf(m, t) * sc;
+  blit(ctx, m, frameOf(m, t), S.ang, elev, bx, by, sc);
+}
+
+// ---------- scene ----------
+const scv = $('cv-scene');
+const byId = id => models().find(m => m.id === id);
+const P = (id, x, y, h = 0, spin = 0) => ({ id, x, y, h, spin, phase: Math.random() * 6 });
+const WORLD = [
+  P('planet', -230, -210, 0.3, 0.02), P('station', 210, -150, 0, 0), P('gate', 10, -260, 0, 0),
+  P('asteroid', -120, -40, 0.4, 0.15), P('asteroid', 140, 40, 2.1, -0.1), P('crystal', -40, 120, 1.2, 0.08), P('asteroid', 60, -120, 4, 0.12),
+  P('crystal', 230, 160, 0.3, -0.06), P('wreck', -200, 90, 0.8, 0.04), P('cargo', 90, 130, 0.5, 0.2), P('satellite', -160, -160, 0.9, 0.05),
+  P('mine', -70, -110, 0, 0.3), P('mine', 170, -40, 0, 0.3), P('turret', 260, 40, 3.1, 0), P('jelly', -250, -30, 0, 0.2),
+  P('drone', 40, 60, 0, 0), P('capsule', -20, -40, 0, 0), P('boss', 30, 270, -0.3, 0),
+];
+const ship = { id: 'ship', x: 0, y: 0, h: 0, phase: 0 };
+const raider = { id: 'raider', x: 0, y: 0, h: 0, phase: 1 };
+const cam = { x: 0, y: 0 };
+function drawScene(t, dt) {
+  const dpr = fitCanvas(scv), ctx = scv.getContext('2d'), elev = S.elev * Math.PI / 180, sq = Math.sin(elev);
+  // ship flies a figure-eight; the raider chases it
+  const st = t * 0.22;
+  ship.x = Math.sin(st) * 150; ship.y = Math.sin(st * 2) * 70;
+  ship.h = Math.atan2(Math.cos(st * 2) * 140, Math.cos(st) * 150);
+  const rt = st - 0.45;
+  raider.x = Math.sin(rt) * 150 + Math.cos(t) * 12; raider.y = Math.sin(rt * 2) * 70 + Math.sin(t * 1.3) * 12;
+  raider.h = Math.atan2(ship.y - raider.y, ship.x - raider.x);
+  cam.x += (ship.x - cam.x) * Math.min(1, dt * 3); cam.y += (ship.y - cam.y) * Math.min(1, dt * 3);
+  if (S.auto && !drag.active) S.yaw += dt * 0.06;
+  const K = models()[0].K || 1;
+  const artSc = Math.max(1, Math.round(Math.min(scv.width, scv.height) / 260 * S.szoom / K)), sc = artSc * K;
+  const cy = Math.cos(-S.yaw), sy = Math.sin(-S.yaw);
+  drawBg(ctx, scv, 7, cam.x * sc * 0.15, cam.y * sc * 0.15 * sq, -S.yaw, Math.round(dpr));
+  const list = [...WORLD, raider, ship].map(o => {
+    const rx = o.x - cam.x, ry = o.y - cam.y;
+    return { o, sx: rx * cy - ry * sy, sy: rx * sy + ry * cy };
+  }).sort((a, b) => a.sy - b.sy);
+  const W = scv.width, H = scv.height;
+  for (const { o, sx, sy: syy } of list) {
+    const m = byId(o.id);
+    const bx = W / 2 + sx * sc, by = H / 2 + syy * sq * sc + bobOf(m, t, o.phase) * artSc;
+    const pad = (m.diag + m.d) * artSc;
+    if (bx < -pad || bx > W + pad || by < -pad || by > H + pad * 2) continue;
+    const ang = o.h + (o.spin || 0) * t * (S.anim ? 1 : 0) - S.yaw;
+    blit(ctx, m, frameOf(m, t, o.phase * 4), ang, elev, bx, by, artSc);
+  }
+}
+
+// ---------- input ----------
+const drag = { active: false, pts: new Map(), pinch: 0 };
+function bindStage(cv, onRot, onZoom, onReset) {
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); drag.pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); drag.active = true; drag.pinch = 0; });
+  cv.addEventListener('pointermove', e => {
+    const p = drag.pts.get(e.pointerId); if (!p) return;
+    if (drag.pts.size === 1) { onRot(e.clientX - p.x, e.clientY - p.y); }
+    else if (drag.pts.size === 2) {
+      const [a, b] = [...drag.pts.values()];
+      const before = Math.hypot(a.x - b.x, a.y - b.y);
+      p.x = e.clientX; p.y = e.clientY;
+      const after = Math.hypot(a.x - b.x, a.y - b.y);
+      if (before > 0) onZoom(after / before);
+      return;
+    }
+    p.x = e.clientX; p.y = e.clientY;
+  });
+  const end = e => { drag.pts.delete(e.pointerId); if (!drag.pts.size) drag.active = false; };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  cv.addEventListener('wheel', e => { e.preventDefault(); onZoom(Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+  cv.addEventListener('dblclick', onReset);
+}
+function setElev(v) { S.elev = Math.max(15, Math.min(90, v)); $('elev').value = Math.round(S.elev); $('elevV').textContent = Math.round(S.elev) + '°'; }
+bindStage(dcv, (dx, dy) => { S.ang += dx * 0.012; setElev(S.elev - dy * 0.3); }, k => { S.zoom = Math.max(0.3, Math.min(5, S.zoom * k)); }, () => { S.zoom = 1; S.ang = -0.6; setElev(42); });
+bindStage(scv, (dx, dy) => { S.yaw -= dx * 0.008; setElev(S.elev - dy * 0.3); }, k => { S.szoom = Math.max(0.5, Math.min(4, S.szoom * k)); }, () => { S.szoom = 1; S.yaw = 0; setElev(42); });
+addEventListener('keydown', e => {
+  if (S.view !== 'detail' || e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowLeft') S.ang -= 0.12; else if (e.key === 'ArrowRight') S.ang += 0.12;
+  else if (e.key === 'ArrowUp') setElev(S.elev + 3); else if (e.key === 'ArrowDown') setElev(S.elev - 3);
+  else if (e.key === '+' || e.key === '=') S.zoom = Math.min(5, S.zoom * 1.15); else if (e.key === '-') S.zoom = Math.max(0.3, S.zoom / 1.15);
+  else return;
+  e.preventDefault();
+});
+$('elev').addEventListener('input', e => setElev(+e.target.value));
+for (const [id, key] of [['b-auto', 'auto'], ['b-anim', 'anim'], ['b-outline', 'outline'], ['b-glow', 'glow'], ['b-explode', 'explode']]) {
+  const b = $(id); b.setAttribute('aria-pressed', S[key] ? 'true' : 'false');
+  b.addEventListener('click', () => { S[key] = !S[key]; b.setAttribute('aria-pressed', S[key] ? 'true' : 'false'); });
+}
+function setView(v) {
+  S.view = v;
+  for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', t.dataset.view === v ? 'true' : 'false');
+  $('v-gallery').hidden = v !== 'gallery'; $('v-detail').hidden = v !== 'detail'; $('v-scene').hidden = v !== 'scene';
+  if (v === 'detail') fillInfo();
+  try { history.replaceState(null, '', '#' + v); } catch (e) {}
+}
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => setView(t.dataset.view)));
+
+// ---------- boot ----------
+let last = performance.now(), t0 = last;
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; const t = (now - t0) / 1000;
+  if (S.view === 'gallery') drawGallery(t);
+  else if (S.view === 'detail') drawDetail(t, dt);
+  else drawScene(t, dt);
+  requestAnimationFrame(loop);
+}
+function setVer(v) {
+  if (!baked[v]) { $('loading').hidden = false; $('loading').textContent = '輪切りを作っています…'; }
+  setTimeout(() => {
+    bakeSet(v); S.ver = v; $('loading').hidden = true;
+    $('b-v2').setAttribute('aria-pressed', v === 2 ? 'true' : 'false');
+    $('b-v1').setAttribute('aria-pressed', v === 1 ? 'true' : 'false');
+    $('b-outline').hidden = false;
+    if (S.view === 'detail') fillInfo();
+  }, 30);
+}
+$('b-v2').addEventListener('click', () => setVer(2));
+$('b-v1').addEventListener('click', () => setVer(1));
+(async () => {
+  const L = SS2.MODELS, t0b = performance.now();
+  for (let i = 0; i < L.length; i++) {
+    $('loading').textContent = `輪切りを作っています… ${i + 1} / ${L.length}`;
+    await new Promise(r => setTimeout(r, 0));
+    SS2.bakeModel(L[i]);
+  }
+  baked[2] = true;
+  console.log('bake v2 ms', Math.round(performance.now() - t0b));
+  $('loading').hidden = true;
+  const h = (location.hash || '').slice(1);
+  setView(['gallery', 'detail', 'scene'].includes(h) ? h : 'gallery');
+  requestAnimationFrame(loop);
+})();
+})();
+</script>
