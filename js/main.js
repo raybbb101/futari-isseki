@@ -1,24 +1,23 @@
-// App flow: loading, menus, room code, role select, the game loop, pause and results.
+// App flow: loading, menus, room code, role select, the game loop, guidebook, pause and results.
 (function () {
-  const { World, Replica, PilotCtl, GunnerCtl, botGunnerInput, botPilotInput } = Sim;
+  const { World, Replica, PilotCtl, GunnerCtl, botGunnerInput, botPilotInput, PLANETS, DEFS } = W3;
   const $ = id => document.getElementById(id);
   const cv = $('cv'), ctx = cv.getContext('2d');
   const store = { get(k, d) { try { const v = localStorage.getItem('futari.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('futari.' + k, JSON.stringify(v)); } catch (e) { /* ignore */ } } };
 
   const G = window.G = {
-    mode: null, role: null, playing: false, world: null, rep: null, st: null,
-    pilotCtl: null, gunnerCtl: new GunnerCtl(), sendT: 0, snapT: 0,
+    mode: null, role: null, playing: false, world: null, rep: null, st: null, seed: 0,
+    pilotCtl: null, gunnerCtl: new GunnerCtl(), bot: {}, sendT: 0, snapT: 0, view: store.get('view', 0),
     vis: store.get('vis', 64) / 100, visNow: 1, partnerText: '', partnerOk: true,
-    lobby: { pilot: null, gunner: null }, cursor: 'pilot', screen: 'load', loaded: false, ended: false,
+    tilt: { pilot: store.get('tiltPilot', false), gunner: store.get('tiltGunner', false) }, invert: store.get('invert', false),
+    lobby: { pilot: null, gunner: null }, cursor: 'pilot', screen: 'load', loaded: false, ended: false, tiltOn: false,
   };
   Sfx.on = store.get('sound', true);
 
-  // ---------- layout ----------
   function resize() {
     const dpr = Math.min(2, devicePixelRatio || 1);
     cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
-    const portrait = innerHeight > innerWidth;
-    G.visNow = portrait ? G.vis : 1;
+    G.visNow = innerHeight > innerWidth ? G.vis : 1;
     document.documentElement.style.setProperty('--uih', (G.visNow * 100) + '%');
   }
   addEventListener('resize', resize); resize();
@@ -37,9 +36,8 @@
     },
   };
   function show(id) {
-    for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== 's-' + id;
-    G.screen = id;
-    window.__typing = id === 'join';
+    for (const s of document.querySelectorAll('.screen')) if (s.id !== 's-book') s.hidden = s.id !== 's-' + id;
+    G.screen = id; window.__typing = id === 'join';
     Menu.set(id ? $('s-' + id) : null);
   }
   function back() {
@@ -57,10 +55,12 @@
   });
   function go(where) {
     if (where === 'host') {
-      if (!Net.available()) { show('host'); $('hostCode').textContent = '····'; $('hostStatus').textContent = 'マルチプレイにはインターネットが必要です。'; return; }
-      show('host'); $('hostCode').textContent = '····'; $('hostStatus').textContent = 'ルームを準備しています…'; G.mode = 'host'; Net.host();
+      show('host'); $('hostCode').textContent = '····';
+      if (!Net.available()) { $('hostStatus').textContent = 'マルチプレイにはインターネットが必要です。'; return; }
+      $('hostStatus').textContent = 'ルームを準備しています…'; G.mode = 'host'; Net.host();
     } else if (where === 'join') { show('join'); joinState.slot = 0; paintSlots(); $('joinStatus').textContent = Net.available() ? '' : 'マルチプレイにはインターネットが必要です。'; }
-    else show(where);
+    else if (where === 'book') { Book.show(store.get('lastRole', 'gunner')); }
+    else { show(where); if (where === 'settings') paintSettings(); }
   }
 
   // ---------- join code entry ----------
@@ -70,18 +70,14 @@
     const A = Net.ABC;
     if (Input.nav('LEFT')) { joinState.slot = (joinState.slot + 3) % 4; paintSlots(); Sfx.play('select'); }
     if (Input.nav('RIGHT')) { joinState.slot = (joinState.slot + 1) % 4; paintSlots(); Sfx.play('select'); }
-    for (const [k, d] of [['UP', -1], ['DOWN', 1]]) if (Input.nav(k)) {
-      const c = joinState.code[joinState.slot]; joinState.code[joinState.slot] = A[(A.indexOf(c) + d + A.length) % A.length] || 'A'; paintSlots(); Sfx.play('select');
-    }
+    for (const [k, d] of [['UP', -1], ['DOWN', 1]]) if (Input.nav(k)) { const c = joinState.code[joinState.slot]; joinState.code[joinState.slot] = A[(A.indexOf(c) + d + A.length) % A.length] || 'A'; paintSlots(); Sfx.play('select'); }
     if (Input.pressed('A') || Input.pressed('START')) doJoin();
     if (Input.pressed('B')) back();
   }
   addEventListener('keydown', e => {
     if (G.screen !== 'join' || document.activeElement === $('codeInput')) return;
-    if (/^Key[A-Z]$/.test(e.code)) {
-      const ch = e.code.slice(3); if (!Net.ABC.includes(ch)) return;
-      joinState.code[joinState.slot] = ch; joinState.slot = Math.min(3, joinState.slot + 1); paintSlots();
-    } else if (e.code === 'Backspace') { joinState.slot = Math.max(0, joinState.slot - 1); paintSlots(); }
+    if (/^Key[A-Z]$/.test(e.code)) { const ch = e.code.slice(3); if (!Net.ABC.includes(ch)) return; joinState.code[joinState.slot] = ch; joinState.slot = Math.min(3, joinState.slot + 1); paintSlots(); }
+    else if (e.code === 'Backspace') { joinState.slot = Math.max(0, joinState.slot - 1); paintSlots(); }
   });
   $('codeInput').addEventListener('input', e => {
     const v = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').split('').filter(c => Net.ABC.includes(c)).slice(0, 4);
@@ -103,8 +99,7 @@
   function paintLobby() {
     for (const el of document.querySelectorAll('.role')) {
       const r = el.dataset.role, who = G.lobby[r];
-      el.classList.toggle('cur', G.cursor === r);
-      el.classList.toggle('mine', who === me()); el.classList.toggle('theirs', !!who && who !== me());
+      el.classList.toggle('cur', G.cursor === r); el.classList.toggle('mine', who === me()); el.classList.toggle('theirs', !!who && who !== me());
       el.querySelector('.who').textContent = who ? (who === me() ? 'あなた' : 'あいて') : '';
     }
     const ready = G.lobby.pilot && G.lobby.gunner;
@@ -112,12 +107,7 @@
     $('lobbyStatus').textContent = ready ? (Net.isHost ? 'START で出発！' : 'ホストの出発を待っています…') : '役を決めてください';
     Menu.set($('s-lobby'));
   }
-  function pickRole(who, role) {
-    const other = role === 'pilot' ? 'gunner' : 'pilot';
-    if (G.lobby[role] && G.lobby[role] !== who) return false;
-    if (G.lobby[other] === who) G.lobby[other] = null;
-    G.lobby[role] = who; return true;
-  }
+  function pickRole(who, role) { const other = role === 'pilot' ? 'gunner' : 'pilot'; if (G.lobby[role] && G.lobby[role] !== who) return false; if (G.lobby[other] === who) G.lobby[other] = null; G.lobby[role] = who; return true; }
   function sendLobby() { Net.send({ t: 'lobby', l: G.lobby }); }
   function lobbyTick() {
     if (Input.pressed('LEFT') || Input.pressed('RIGHT')) { G.cursor = G.cursor === 'pilot' ? 'gunner' : 'pilot'; paintLobby(); Sfx.play('select'); }
@@ -125,17 +115,12 @@
     if (Input.pressed('START')) $('lobbyStart').click();
     if (Input.pressed('B')) back();
   }
-  function choose(role) {
-    if (Net.isHost) { if (pickRole('host', role)) { sendLobby(); Sfx.play('ok'); } paintLobby(); }
-    else { Net.send({ t: 'pick', role }); Sfx.play('ok'); }
-  }
+  function choose(role) { if (Net.isHost) { if (pickRole('host', role)) { sendLobby(); Sfx.play('tick'); } paintLobby(); } else { Net.send({ t: 'pick', role }); Sfx.play('tick'); } }
   for (const el of document.querySelectorAll('.role')) el.addEventListener('click', () => { G.cursor = el.dataset.role; choose(el.dataset.role); });
   $('lobbyStart').onclick = () => {
     if (!Net.isHost || !(G.lobby.pilot && G.lobby.gunner)) return;
-    const seed = (Math.random() * 1e9) | 0;
-    Net.send({ t: 'start', seed });
-    G.role = G.lobby.pilot === 'host' ? 'pilot' : 'gunner';
-    begin('host', G.role, seed);
+    const seed = (Math.random() * 1e9) | 0; Net.send({ t: 'start', seed });
+    begin('host', G.lobby.pilot === 'host' ? 'pilot' : 'gunner', seed);
   };
 
   // ---------- network ----------
@@ -148,18 +133,18 @@
       else if (G.playing) { G.partnerOk = false; G.partnerText = 'あいて：切断'; }
     } else if (s === 'closed') {
       G.partnerOk = false; G.partnerText = 'あいて：切断されました';
-      if (!G.playing && G.screen === 'lobby') { show('title'); }
-      if (G.playing && !G.ended) { FX.apply(['msg', '相手との接続が切れました。START → タイトルへ', 6], G.st); }
+      if (!G.playing && G.screen === 'lobby') show('title');
+      if (G.playing && !G.ended) FX3.apply(['msg', '相手との接続が切れました。START → タイトルへ', 6], G.st, G.role);
     }
   };
   Net.onMsg = m => {
     if (Net.isHost) {
       if (m.t === 'pick') { pickRole('guest', m.role); sendLobby(); paintLobby(); }
+      else if (m.t === 'quit') { G.partnerOk = false; G.partnerText = 'あいて：タイトルにもどりました'; }
       else if (G.world && G.playing) G.world.handle(m);
-      if (m.t === 'quit') { G.partnerOk = false; G.partnerText = 'あいて：タイトルにもどりました'; }
     } else {
       if (m.t === 'lobby') { G.lobby = m.l; paintLobby(); }
-      else if (m.t === 'start') { G.role = G.lobby.pilot === 'guest' ? 'pilot' : 'gunner'; begin('guest', G.role, m.seed); }
+      else if (m.t === 'start') begin('guest', G.lobby.pilot === 'guest' ? 'pilot' : 'gunner', m.seed);
       else if (m.t === 's' && G.rep) G.rep.snap(m, G.role);
       else if (m.t === 'e' && G.rep) for (const ev of m.l) { G.rep.event(ev); onEvent(ev, G.rep); }
       else if (m.t === 'quit') { G.partnerOk = false; G.partnerText = 'あいて：タイトルにもどりました'; }
@@ -167,70 +152,97 @@
   };
 
   // ---------- game ----------
-  function startSolo(role) { G.mode = 'solo'; begin('solo', role, (Math.random() * 1e9) | 0); }
+  function startSolo(role) { begin('solo', role, (Math.random() * 1e9) | 0); }
   function begin(mode, role, seed) {
-    G.mode = mode; G.role = role; G.playing = true; G.ended = false;
-    FX.reset(); G.pilotCtl = new PilotCtl(); G.gunnerCtl = new GunnerCtl(); GunnerViewReset();
-    if (mode === 'guest') { G.rep = new Replica(); G.world = null; G.st = G.rep; }
-    else { G.world = new World(seed); G.rep = null; G.st = G.world; }
-    if (mode === 'solo') G.partnerText = role === 'pilot' ? 'ソロ：ガンナーは自動' : 'ソロ：船は自動でよける';
+    G.mode = mode; G.role = role; G.seed = seed; G.playing = true; G.ended = false; store.set('lastRole', role);
+    FX3.reset(); G.pilotCtl = new PilotCtl(); G.gunnerCtl = new GunnerCtl(); G.bot = {}; HUD.camS.init = false;
+    if (mode === 'guest') { G.rep = new Replica(seed); G.world = null; G.st = G.rep; }
+    else { G.world = new World(seed, { training: mode === 'solo' && role === 'gunner' }); G.rep = null; G.st = G.world; }
+    G.partnerText = mode === 'solo' ? (role === 'pilot' ? 'ソロ：ガンナーは自動で撃ち続ける' : 'ソロ（トレーニング）：船は自動で飛ぶ') : G.partnerText;
+    applyTilt();
     show(null);
+    FX3.apply(['msg', role === 'pilot' ? 'ホーム・ステーションから発進！ 惑星をさがしてスキャンしよう' : '砲台につきました。敵が来たら自由にねらえます', 4], G.st, role);
   }
-  function GunnerViewReset() { Views.GunnerView.dust = []; }
-  const humanPilot = () => { const s = Input.stick(); return { x: s.x, y: s.y, dodge: Input.pressed('A'), shield: Input.down('B') || Input.down('L1'), boost: Input.down('R2') || Input.down('R1'), ping: Input.pressed('X') }; };
-  const humanGunner = () => ({ press: ['UP', 'DOWN', 'LEFT', 'RIGHT', 'A', 'B', 'X', 'Y'].filter(k => Input.pressed(k)), next: Input.pressed('R1'), prev: Input.pressed('L1'), special: Input.pressed('R2'), ping: Input.pressed('SELECT') });
-
-  function pilotEvent(ev, st, sendFn) {
+  async function applyTilt() {
+    const want = G.playing && G.tilt[G.role];
+    if (want && !Tilt.on) { const ok = await Tilt.enable(); if (!ok) { G.tilt[G.role] = false; FX3.toast('チルトを使えませんでした（せっていで許可してください）', '#ff4a62', 3); } }
+    else if (!want && Tilt.on) Tilt.disable();
+    G.tiltOn = G.playing && G.tilt[G.role] && Tilt.on;
+  }
+  function pilotInput() {
+    const s = Input.stick(), s2 = Input.stick2(), tl = G.tiltOn ? Tilt.read() : { lean: 0, pitch: 0 };
+    return { lx: s.x, ly: s.y, rx: s2.x, ry: s2.y, up: (Input.down('R1') ? 1 : 0) - (Input.down('L1') ? 1 : 0), boost: Input.value('R2') > 0.3, brake: Input.value('L2') > 0.3, dodge: Input.pressed('A'), shield: Input.down('B'), scan: Input.pressed('X'), tl: clampT(tl.lean), tp: clampT(tl.pitch), invert: G.invert };
+  }
+  const clampT = v => Math.max(-1, Math.min(1, v / 0.6));
+  function gunnerInput() {
+    const tl = G.tiltOn ? Tilt.read() : { lean: 0, pitch: 0 };
+    return { fire: Input.down('A'), beam: Input.down('B'), x: Input.pressed('X'), yTap: Input.pressed('Y'), yDown: Input.down('Y'), arrows: ['UP', 'DOWN', 'LEFT', 'RIGHT'].filter(k => Input.pressed(k)), l1: Input.down('L1'), r1: Input.down('R1'), l2: Input.down('L2'), r2: Input.down('R2'), tl: clampT(tl.lean), tp: tl.pitch, tilt: G.tiltOn };
+  }
+  const idleP = { lx: 0, ly: 0, rx: 0, ry: 0 }, idleG = { arrows: [] };
+  function pilotEvent(ev, st, send) {
     if (ev === 'dodge') Sfx.play('dodge');
-    if (ev === 'ping') sendFn({ t: 'ping', who: 'pilot', x: st.ship.x + 70, y: st.ship.y });
+    if (ev === 'scan') {
+      if (st.scan) send({ t: 'pscan', on: false });
+      else { const np = HUD.scanTarget(st); if (np) { send({ t: 'pscan', on: true, pi: np.i }); Sfx.play('scan'); } else FX3.toast('スキャンできる惑星が近くにない', '#8b90b3', 1.6); }
+    }
   }
-  function gunnerOut(list, st, sendFn) {
+  function gunnerOut(list, st, send) {
     for (const m of list) {
-      if (!m.local) { sendFn(m); continue; }
-      if (m.local === 'ok') Sfx.play('ok');
-      else if (m.local === 'miss') Sfx.play('miss');
-      else if (m.local === 'switch') Sfx.play('switch');
-      else if (m.local === 'noenergy') FX.apply(['msg', 'エネルギーが60たりない', 1.4], st);
-      else if (m.local === 'ping') sendFn({ t: 'ping', who: 'gunner', x: st.ship.x + Math.cos(st.turret.ang) * 140, y: st.ship.y + Math.sin(st.turret.ang) * 140 });
+      if (!m.local) { send(m); continue; }
+      const c = G.gunnerCtl;
+      switch (m.local) {
+        case 'gun': Sfx.play('gun'); break;
+        case 'beam': Sfx.play('beam'); break;
+        case 'tick': Sfx.play('tick'); break;
+        case 'skill': Sfx.play('skill'); FX3.toast(W3.SKILLS[m.k].jp + '！', '#ffe68a', 1.2); break;
+        case 'fizzle': Sfx.play('fizzle'); c.missT = 0.5; FX3.toast('不発…（コンボがちがう）', '#ff4a62', 1.2); break;
+        case 'cd': Sfx.play('fizzle'); FX3.toast(`${W3.SKILLS[m.k].jp} はまだ使えない`, '#8b90b3', 1.2); break;
+        case 'noult': Sfx.play('fizzle'); FX3.toast('ノヴァのゲージがまだたまっていない', '#8b90b3', 1.4); break;
+        case 'ult': break;
+        case 'scanned': Sfx.play('scan'); break;
+      }
     }
   }
   function onEvent(ev, st) {
-    FX.apply(ev, st);
-    if (ev[0] === 'pause') { if (ev[1]) openPause(); else if (G.screen === 'pause') show(null); }
-    if (ev[0] === 'end') { G.ended = true; setTimeout(() => showResult(ev[1], ev[2]), 1600); }
+    FX3.apply(ev, st, G.role);
+    const k = ev[0];
+    if (k === 'book') {
+      const fresh = Book.unlock(ev[1], ev[2]);
+      const name = ev[1] === 'e' ? DEFS[ev[2]].jp : PLANETS[ev[2]].name;
+      if (fresh) { Sfx.play('book'); FX3.toast(`図鑑に追加：${name}（SELECTで見る）`, '#7dff8a', 3.5); if (ev[1] === 'p' && Book.count('p') === PLANETS.length) FX3.apply(['msg', 'すべての惑星をスキャンした！ 探索完了！', 6], st, G.role); }
+      else FX3.toast(`${name}：もう図鑑にのっています`, '#8b90b3', 2);
+    }
+    if (k === 'pause') { if (ev[1]) openPause(); else if (G.screen === 'pause') show(null); }
+    if (k === 'end') { G.ended = true; setTimeout(() => showResult(ev[1], ev[2], ev[3]), 1800); }
   }
   function gameTick(dt) {
-    if (Input.pressed('START') && G.screen !== 'pause' && !G.ended) { togglePause(true); return; }
-    if (G.screen === 'pause') { Menu.tick(); if (Input.pressed('START')) resume(); }
-    if (G.screen === 'result') Menu.tick();
+    const st = G.st, inMenu = G.screen === 'pause' || G.screen === 'result';
+    if (Book.open) { if (Book.tick() === 'close' && G.mode === 'solo' && G.world) G.world.paused = false; }
+    else if (!inMenu && Input.pressed('SELECT')) { Book.show(G.role); if (G.mode === 'solo') G.world.paused = true; }
+    else if (Input.pressed('START') && !inMenu && !G.ended) { togglePause(); }
+    else if (inMenu) { Menu.tick(); if (G.screen === 'pause' && Input.pressed('START')) resume(); }
+    const busy = Book.open || inMenu;
+    if (!busy && G.role === 'pilot' && Input.pressed('Y')) { G.view = 1 - G.view; store.set('view', G.view); FX3.toast(G.view ? '視点：コックピット' : '視点：船のうしろ', '#7ff6ff', 1.2); }
+    if (!busy && Input.pressed('L3') && Tilt.on) { Tilt.recenter(); FX3.toast('チルトの中心を合わせました', '#7ff6ff', 1.2); }
     if (G.mode !== 'guest') {
       const w = G.world, local = m => w.handle(m);
-      const pilotHuman = G.role === 'pilot', gunnerHuman = G.role === 'gunner';
-      if (pilotHuman) pilotEvent(G.pilotCtl.update(dt, w, G.screen === 'pause' ? idlePilot : humanPilot()), w, local);
-      else if (G.mode === 'solo') G.pilotCtl.update(dt, w, botPilotInput(null, w));
-      if (gunnerHuman) gunnerOut(G.gunnerCtl.update(dt, w, G.screen === 'pause' ? idleGunner : humanGunner()), w, local);
-      else if (G.mode === 'solo') gunnerOut(G.gunnerCtl.update(dt, w, botGunnerInput(G.gunnerCtl, w, dt)), w, local);
+      if (G.role === 'pilot') pilotEvent(G.pilotCtl.update(dt, w, busy ? idleP : pilotInput()), w, local);
+      else if (G.mode === 'solo') pilotEvent(G.pilotCtl.update(dt, w, botPilotInput(G.bot, w)), w, local);
+      if (G.role === 'gunner') gunnerOut(G.gunnerCtl.update(dt, w, busy ? idleG : gunnerInput()), w, local);
+      else if (G.mode === 'solo') for (const m of G.gunnerCtl.update(dt, w, botGunnerInput(G.gunnerCtl, w, dt))) if (!m.local) w.handle(m);
       w.step(dt);
       const evs = w.out; w.out = [];
       for (const ev of evs) onEvent(ev, w);
-      if (G.mode === 'host') {
-        if (evs.length) Net.send({ t: 'e', l: evs });
-        G.snapT -= dt; if (G.snapT <= 0) { G.snapT = 0.1; Net.send(w.snap()); }
-      }
+      if (G.mode === 'host') { if (evs.length) Net.send({ t: 'e', l: evs }); G.snapT -= dt; if (G.snapT <= 0) { G.snapT = 0.125; Net.send(w.snap()); } }
     } else {
       const r = G.rep, send = m => Net.send(m);
       r.step(dt);
-      if (G.role === 'pilot') {
-        pilotEvent(G.pilotCtl.update(dt, r, G.screen === 'pause' ? idlePilot : humanPilot()), r, send);
-        G.sendT -= dt; if (G.sendT <= 0) { G.sendT = 0.05; send(G.pilotCtl.msg(r.ship)); }
-      } else {
-        gunnerOut(G.gunnerCtl.update(dt, r, G.screen === 'pause' ? idleGunner : humanGunner()), r, send);
-        G.sendT -= dt; if (G.sendT <= 0) { G.sendT = 0.1; send(G.gunnerCtl.msg(r)); }
-      }
+      if (G.role === 'pilot') { pilotEvent(G.pilotCtl.update(dt, r, busy ? idleP : pilotInput()), r, send); G.sendT -= dt; if (G.sendT <= 0) { G.sendT = 0.05; send(G.pilotCtl.msg(r.ship)); } }
+      else { gunnerOut(G.gunnerCtl.update(dt, r, busy ? idleG : gunnerInput()), r, send); G.sendT -= dt; if (G.sendT <= 0) { G.sendT = 0.1; send(G.gunnerCtl.msg()); } }
     }
-    FX.step(dt);
+    if (G.gunnerCtl.missT > 0) G.gunnerCtl.missT -= dt;
+    FX3.step(dt);
   }
-  const idlePilot = { x: 0, y: 0 }, idleGunner = { press: [] };
   function togglePause() {
     if (G.mode === 'solo') { G.world.paused = true; openPause(); }
     else if (G.mode === 'host') G.world.handle({ t: 'pause', on: true });
@@ -238,6 +250,7 @@
   }
   function openPause() {
     $('pSwap').hidden = G.mode !== 'solo';
+    $('pTilt').innerHTML = `チルト（スマホをかたむけて操作）：${G.tilt[G.role] ? 'オン' : 'オフ'}<small>${G.role === 'pilot' ? '左右にかたむけて旋回・前後で上下' : '左右にかたむけて回る・前後で上下を見る（戦闘モード）'}</small>`;
     $('pauseInfo').textContent = G.mode === 'solo' ? 'ソロ（お試し）' : `通信量　送信 ${(Net.sentBytes / 1024).toFixed(0)}KB ／ 受信 ${(Net.recvBytes / 1024).toFixed(0)}KB`;
     show('pause');
   }
@@ -247,27 +260,37 @@
     else Net.send({ t: 'pause', on: false });
   }
   $('pResume').onclick = resume;
-  $('pSwap').onclick = () => { G.role = G.role === 'pilot' ? 'gunner' : 'pilot'; G.partnerText = G.role === 'pilot' ? 'ソロ：ガンナーは自動' : 'ソロ：船は自動でよける'; G.pilotCtl.vx = G.pilotCtl.vy = 0; resume(); };
-  $('pQuit').onclick = $('rQuit').onclick = () => { if (G.mode !== 'solo') { Net.send({ t: 'quit' }); setTimeout(() => Net.close(), 200); } G.playing = false; G.world = G.rep = null; show('title'); };
+  $('pTilt').onclick = async () => { G.tilt[G.role] = !G.tilt[G.role]; store.set(G.role === 'pilot' ? 'tiltPilot' : 'tiltGunner', G.tilt[G.role]); await applyTilt(); openPause(); Menu.i = 1; Menu.paint(); };
+  $('pRecenter').onclick = () => { Tilt.recenter(); FX3.toast('チルトの中心を合わせました', '#7ff6ff', 1.2); };
+  $('pSwap').onclick = () => { G.role = G.role === 'pilot' ? 'gunner' : 'pilot'; G.world.training = G.role === 'gunner'; G.partnerText = G.role === 'pilot' ? 'ソロ：ガンナーは自動で撃ち続ける' : 'ソロ（トレーニング）：船は自動で飛ぶ'; G.bot = {}; applyTilt(); resume(); };
+  $('pQuit').onclick = $('rQuit').onclick = () => { if (G.mode !== 'solo') { Net.send({ t: 'quit' }); setTimeout(() => Net.close(), 200); } G.playing = false; G.world = G.rep = null; Book.hide(); if (Tilt.on) Tilt.disable(); show('title'); };
   $('rAgain').onclick = () => {
     if (G.mode === 'solo') begin('solo', G.role, (Math.random() * 1e9) | 0);
     else if (G.mode === 'host') { const seed = (Math.random() * 1e9) | 0; Net.send({ t: 'start', seed }); begin('host', G.role, seed); }
   };
-  function showResult(win, s) {
-    $('rTitle').textContent = win ? 'ミッション クリア！' : 'ふたり号 撃沈…';
-    $('rTitle').style.color = win ? 'var(--cyan)' : 'var(--red)';
-    const acc = s.combos + s.miss ? Math.round(s.combos / (s.combos + s.miss) * 100) : 100;
-    $('rStats').innerHTML = `<dt>時間</dt><dd>${Math.floor(s.time / 60)}分${s.time % 60}秒</dd><dt>たおした数</dt><dd>${s.kills}</dd><dt>コンボ成功</dt><dd>${s.combos}（正確さ ${acc}%）</dd><dt>チャージ砲</dt><dd>${s.specials}回</dd><dt>受けたダメージ</dt><dd>${s.hits}回（残り船体 ${s.hp}）</dd>`;
+  function showResult(reason, info, s) {
+    $('rTitle').textContent = reason === 'crash' ? `${info} に墜落…` : 'ふたり号 撃沈…';
+    $('rTitle').style.color = 'var(--red)';
+    $('rStats').innerHTML = `<dt>飛んだ時間</dt><dd>${Math.floor(s.time / 60)}分${s.time % 60}秒</dd><dt>スキャンした惑星</dt><dd>${s.scansP}（図鑑 ${Book.count('p')}/${PLANETS.length}）</dd><dt>スキャンした生きもの・機体</dt><dd>${s.scansE}（図鑑 ${Book.count('e')}/${W3.BOOK_ORDER.length}）</dd><dt>たおした敵</dt><dd>${s.kills}</dd><dt>受けたダメージ</dt><dd>${s.hits}回</dd>`;
     $('rAgain').hidden = G.mode === 'guest';
-    $('rNote').textContent = G.mode === 'guest' ? 'ホストが「もう一度」をえらぶと、また始まります。' : '';
+    $('rNote').textContent = (reason === 'crash' ? '惑星の近くでは引力に注意。RT の全力加速なら脱出できます。' : '') + (G.mode === 'guest' ? '　ホストが「もう一度」をえらぶと、また始まります。' : '　図鑑の記録は消えません。');
     show('result');
   }
 
   // ---------- settings ----------
-  $('vis').value = Math.round(G.vis * 100); $('visV').textContent = Math.round(G.vis * 100) + '%';
+  function paintSettings() {
+    $('vis').value = Math.round(G.vis * 100); $('visV').textContent = Math.round(G.vis * 100) + '%';
+    $('stTiltP').innerHTML = `パイロットのチルト：${G.tilt.pilot ? 'オン' : 'オフ'}<small>コントローラーのスマホを左右にかたむけて旋回、前後で上下</small>`;
+    $('stTiltG').innerHTML = `ガンナーのチルト：${G.tilt.gunner ? 'オン' : 'オフ'}<small>戦闘モードで、左右にかたむけて回る・前後で上下を見る</small>`;
+    $('stInvert').innerHTML = `パイロットの上下：${G.invert ? '反転（スティック下で上を向く）' : 'ふつう'}`;
+    $('soundBtn').innerHTML = '音：' + (Sfx.on ? 'オン' : 'オフ');
+  }
   $('vis').addEventListener('input', e => { G.vis = +e.target.value / 100; $('visV').textContent = e.target.value + '%'; store.set('vis', +e.target.value); resize(); });
-  const paintSound = () => { $('soundBtn').innerHTML = '音：' + (Sfx.on ? 'オン' : 'オフ'); };
-  paintSound(); $('soundBtn').onclick = () => { Sfx.on = !Sfx.on; store.set('sound', Sfx.on); paintSound(); };
+  $('stTiltP').onclick = async () => { G.tilt.pilot = !G.tilt.pilot; if (G.tilt.pilot && !(await Tilt.enable())) { G.tilt.pilot = false; alertTilt(); } else if (Tilt.on) Tilt.disable(); store.set('tiltPilot', G.tilt.pilot); paintSettings(); };
+  $('stTiltG').onclick = async () => { G.tilt.gunner = !G.tilt.gunner; if (G.tilt.gunner && !(await Tilt.enable())) { G.tilt.gunner = false; alertTilt(); } else if (Tilt.on) Tilt.disable(); store.set('tiltGunner', G.tilt.gunner); paintSettings(); };
+  const alertTilt = () => { $('stNote').textContent = 'このスマホではチルトを使えないか、許可されませんでした。'; };
+  $('stInvert').onclick = () => { G.invert = !G.invert; store.set('invert', G.invert); paintSettings(); };
+  $('soundBtn').onclick = () => { Sfx.on = !Sfx.on; store.set('sound', Sfx.on); paintSettings(); };
   function settingsTick() {
     if (Input.nav('LEFT') || Input.nav('RIGHT')) { const v = Math.max(40, Math.min(100, +$('vis').value + (Input.down('LEFT') ? -2 : 2))); $('vis').value = v; $('vis').dispatchEvent(new Event('input')); }
     Menu.tick();
@@ -276,14 +299,15 @@
   // ---------- title background ----------
   function drawTitle(t) {
     const W = cv.width, H = cv.height, VH = H * G.visNow;
-    ctx.fillStyle = '#070812'; ctx.fillRect(0, 0, W, H);
-    const g = ctx.createLinearGradient(0, 0, 0, VH); g.addColorStop(0, 'rgba(70,30,120,0.35)'); g.addColorStop(1, 'rgba(10,40,90,0.25)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, VH);
-    const r = Sim.rngOf(3);
-    for (let i = 0; i < 220; i++) { const x = ((r() * W - t * 12 * (0.3 + r())) % W + W) % W, y = r() * VH; ctx.fillStyle = `rgba(220,225,255,${0.3 + r() * 0.6})`; ctx.fillRect(x | 0, y | 0, 2, 2); }
-    if (!G.loaded) return;
-    const s = Math.max(2, Math.round(Math.min(W, VH) / 140));
-    Stack.draw(ctx, 'gas', 0, t * 0.03, 30, W * 0.82, VH * 0.36, Math.max(1, s * 0.8), { noGlow: true });
-    Stack.draw(ctx, 'ship', Math.floor(t * 10) % 8, -0.5 + Math.sin(t * 0.6) * 0.3, 40, W * 0.18, VH * 0.72 + Math.sin(t * 1.3) * s * 3, s);
+    if (!G.loaded) { ctx.fillStyle = '#05060d'; ctx.fillRect(0, 0, W, H); return; }
+    R3.setCam([-260 + Math.sin(t * 0.05) * 40, -120, 60], 0.35 + Math.sin(t * 0.07) * 0.1, 0.05, 0, W, VH, Math.max(W, VH) * 0.7, VH / 2);
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, VH); ctx.clip();
+    R3.drawSky(ctx, t);
+    const sh = [0, 0, 20 + Math.sin(t * 1.2) * 6];
+    R3.drawObj(ctx, 'station', R3.frameOf('station', t, 0), [600, 260, -60], W3.fwdOf(t * 0.05, 0), [0, 0, 1], 3, {});
+    R3.drawObj(ctx, 'ship', R3.frameOf('ship', t, 0), sh, W3.fwdOf(0.6, 0.05), W3.basis(0.6, 0.05, Math.sin(t * 0.8) * 0.25).u, 1, {});
+    ctx.restore();
+    if (VH < H) { ctx.fillStyle = '#000'; ctx.fillRect(0, VH, W, H - VH); }
   }
 
   // ---------- loop ----------
@@ -295,40 +319,39 @@
     if (G.playing) {
       gameTick(dt);
       if (G.playing && G.st) {
-        if (G.role === 'pilot') Views.PilotView.draw(ctx, cv.width, cv.height, G.st, G, t);
-        else Views.GunnerView.draw(ctx, cv.width, cv.height, G.st, G, t, dt, G.visNow);
+        if (G.role === 'pilot') HUD.pilot(ctx, cv.width, cv.height, G.st, G, t, dt);
+        else HUD.gunner(ctx, cv.width, cv.height, G.st, G, t, dt, G.visNow);
       }
     } else {
       drawTitle(t);
-      if (G.screen === 'join') joinTick();
+      if (Book.open) Book.tick();
+      else if (G.screen === 'join') joinTick();
       else if (G.screen === 'lobby') lobbyTick();
       else if (G.screen === 'settings') settingsTick();
       else if (G.screen !== 'load') Menu.tick();
-      const pad = Input.padName();
-      if (G.screen === 'title') $('padStatus').textContent = pad ? 'コントローラー：つながっています' : 'コントローラーのボタンを押すと使えます（キーボードでも遊べます）';
+      if (G.screen === 'title') $('padStatus').textContent = Input.padName() ? 'コントローラー：つながっています' : 'コントローラーのボタンを押すと使えます（キーボードでも遊べます）';
     }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
   G.debugStep = (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) { Input.poll(dt); if (G.playing) gameTick(dt); } };
 
-  // ---------- loading: bake every sprite stack ----------
-  const GAME_FRAMES = { ship: 8, raider: 4, drone: 8, mine: 8, turret: 8, boss: 6, jelly: 8, station: 8, gate: 8, capsule: 8 };
+  // ---------- loading: bake sprite stacks (the rest keeps baking in the background) ----------
+  const GAME_FRAMES = { ship: 8, raider: 4, raider_g: 4, drone: 8, drone_r: 8, mine: 8, turret: 8, boss: 6, jelly: 8, jelly_b: 8, station: 8, interceptor: 2, gunship: 2, trader: 2, probe: 4, manta: 6, whale: 6, eel: 8, beetle: 4, spore: 6 };
+  const FIRST = ['ship', 'station', 'asteroid', 'earth', 'gas', 'violet', 'moon', 'ice', 'lava', 'desert', 'planet', 'junk', 'cargo', 'satellite'];
   (async () => {
-    const L = SS2.MODELS;
+    const L = SS2.MODELS.filter(m => m.id !== 'gate' && m.id !== 'capsule');
     for (const m of L) if (GAME_FRAMES[m.id]) m.F = GAME_FRAMES[m.id];
-    for (let i = 0; i < L.length; i++) {
-      $('loadText').textContent = `宇宙船を組み立てています… ${i + 1} / ${L.length}`;
-      $('loadBar').style.width = (i / L.length * 100) + '%';
-      await new Promise(r => setTimeout(r, 0));
-      SS2.bakeModel(L[i]);
+    const first = FIRST.map(id => L.find(m => m.id === id)).filter(Boolean), rest = L.filter(m => !FIRST.includes(m.id));
+    for (let i = 0; i < first.length; i++) {
+      $('loadText').textContent = `宇宙を組み立てています… ${i + 1} / ${first.length}`;
+      $('loadBar').style.width = (i / first.length * 100) + '%';
+      await new Promise(r => setTimeout(r, 0)); SS2.bakeModel(first[i]);
     }
-    $('loadBar').style.width = '100%';
     try { await document.fonts.load('16px "DotGothic16"'); } catch (e) { /* fallback font */ }
     G.loaded = true; show('title');
+    for (const m of rest) { await new Promise(r => setTimeout(r, 20)); SS2.bakeModel(m); }
   })();
 
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-    addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
-  }
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 })();

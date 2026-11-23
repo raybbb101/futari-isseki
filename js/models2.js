@@ -258,7 +258,9 @@
     for (let f = 0; f < n.F; f++) {
       const V = new VolK(n.mw, n.mh, n.md);
       base.build(V, f, n.F);
-      if (DETAIL[n.id]) DETAIL[n.id](V, f, n.F);
+      const det = DETAIL[n.id] || DETAIL[base.baseId];
+      if (det) det(V, f, n.F);
+      if (base.remap) window.SS.applyRemap(V, base.remap);
       n.frames.push(bakeLit(V));
     }
     n.slices = n.frames[0].count;

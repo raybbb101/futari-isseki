@@ -445,6 +445,184 @@
     },
   ];
 
+  // ---------- more ships, creatures and junk (v3) ----------
+  function applyRemap(V, map) {
+    const idm = {}; for (const k in map) idm[MID[k]] = MID[map[k]];
+    for (let i = 0; i < V.m.length; i++) { const t = idm[V.m[i]]; if (t) V.m[i] = t; }
+  }
+  function variant(id, baseId, jp, role, desc, remap) {
+    const b = MODELS.find(m => m.id === baseId);
+    return Object.assign({}, b, { id, jp, role, desc, baseId, remap, build(V, f, F) { b.build(V, f, F); applyRemap(V, remap); } });
+  }
+  MODELS.push(
+    {
+      id: 'interceptor', jp: 'インターセプター', role: '敵', w: 36, h: 24, d: 10, F: 4, fps: 12,
+      desc: '細長い赤い迎撃機。とても速い。',
+      build(V, f) {
+        const cy = 12;
+        V.cone(3, cy, 5, 34, cy, 5, 3.6, 0.5, 'red');
+        V.region([3, 23, 0, 24, 3.6, 5.4], (x, y, z) => { const dy = Math.abs(y - cy); return dy <= 11 && x >= 4 + dy * 1.15 && x <= 22 - dy * 0.35; }, 'red');
+        V.paint((x, y, z) => Math.abs(Math.abs(y - cy) - 6) < 0.7 && z < 6, 'gold');
+        V.ell(24, cy, 6.6, 4.5, 1.6, 1.4, 'glass');
+        for (const s of [-3, 3]) V.region([5, 11, cy + s - 1, cy + s + 1, 6, 10], (x, y, z) => Math.abs(y - (cy + s)) < 0.55 && x >= 5 + (z - 6) * 1.1 && x < 11, 'gold');
+        const fl = 1 + (f % 2);
+        V.seg(3 - fl * 1.5, cy, 5, 3.5, cy, 5, 1.4, 'e_fire2'); V.seg(3 - fl, cy, 5, 3.5, cy, 5, 0.8, 'e_fire');
+        V.put(18, cy - 10, 4, 'e_red'); V.put(18, cy + 10, 4, 'e_red');
+      },
+    },
+    {
+      id: 'gunship', jp: 'ガンシップ', role: '敵', w: 50, h: 36, d: 16, F: 4, fps: 8,
+      desc: '横に大砲をならべた重い砲艦。',
+      build(V, f, F) {
+        const cy = 18;
+        V.ell(25, cy, 6, 21, 9, 5, 'metal');
+        V.box(9, cy - 7, 8, 41, cy + 7, 10.5, 'purp');
+        for (const s of [-1, 1]) {
+          V.seg(10, cy + s * 10.5, 6, 40, cy + s * 10.5, 6, 3.6, 'metal');
+          V.paint((x, y, z) => Math.abs(y - (cy + s * 10.5)) < 4 && z < 10 && Math.floor(x) % 5 === 0, 'dark');
+        }
+        V.box(13, cy - 3, 10.5, 21, cy + 3, 14, 'purp');
+        V.paint((x, y, z) => x > 20.5 && z > 11.5 && z < 13 && Math.floor(y) % 2 === 0, 'e_cyan');
+        for (const [tx, ty] of [[28, cy], [35, cy - 4], [35, cy + 4]]) {
+          V.cyl(tx, ty, 2.2, 10.5, 12.5, 'gold');
+          const a = Math.sin(f / F * TAU + tx) * 0.5;
+          V.seg(tx, ty, 11.8, tx + Math.cos(a) * 6, ty + Math.sin(a) * 6, 11.8, 0.8, 'metal');
+        }
+        V.cone(42, cy, 6, 49, cy, 5.5, 4, 1, 'red');
+        const fl = 1 + (f % 2) * 2;
+        for (const s of [-10.5, 0, 10.5]) V.seg(Math.max(0, 4 - fl), cy + s, 6, 5, cy + s, 6, 2, 'e_violet');
+      },
+    },
+    {
+      id: 'trader', jp: '行商船', role: '友好', w: 56, h: 22, d: 14, F: 2, fps: 2,
+      desc: 'コンテナを運ぶ商人の船。',
+      build(V, f) {
+        const cy = 11, cols = ['orange', 'green', 'hull', 'orange', 'sand'];
+        V.seg(5, cy, 6, 50, cy, 6, 1.6, 'metal');
+        V.ell(49, cy, 7, 6, 5, 4.5, 'white'); V.paint((x, y, z) => x > 52 && z > 7.5 && z < 9.5, 'glass');
+        for (let k = 0; k < 5; k++) { const x0 = 9 + k * 7.5; V.box(x0, cy - 5, 2, x0 + 6.5, cy + 5, 11, cols[k]); }
+        V.cone(2, cy, 6, 7, cy, 6, 3, 2, 'metal');
+        V.seg(0, cy, 6, 2, cy, 6, 1.6, f % 2 ? 'e_cyan' : 'e_white');
+        V.put(30, cy, 11, f % 2 ? 'e_green' : 'green');
+      },
+    },
+    {
+      id: 'probe', jp: '探査機', role: '中立', w: 24, h: 24, d: 18, F: 4, fps: 4,
+      desc: '太陽電池の羽をもつ小さな探査機。',
+      build(V, f) {
+        const c = 12;
+        V.ell(c, c, 8, 4, 4, 4, 'gold');
+        V.paint((x, y, z) => Math.abs(z - 8) < 0.8, 'metal');
+        for (const s of [-1, 1]) { V.seg(c + s * 4, c, 8.5, c + s * 6.5, c, 8.5, 0.5, 'metal'); V.box(s < 0 ? 1 : 17, c - 4, 8, s < 0 ? 7 : 23, c + 4, 9, 'glass'); }
+        V.paint((x, y, z, xi) => z > 8 && z < 9 && (x < 7.5 || x > 16.5) && xi % 3 === 0, 'metal');
+        V.seg(c, c, 12, c, c, 16.5, 0.4, 'metal'); V.ell(c, c, 13.5, 2.4, 2.4, 0.6, 'white');
+        V.put(c, c, 16, f % 4 < 2 ? 'e_green' : 'green');
+        V.ell(c + 3.6, c, 8, 0.9, 1.2, 1.2, 'e_cyan');
+      },
+    },
+    {
+      id: 'manta', jp: '星エイ', role: '友好', w: 44, h: 40, d: 12, F: 6, fps: 6,
+      desc: 'つばさをはばたかせて泳ぐ、おだやかな宇宙の生きもの。',
+      build(V, f, F) {
+        const cx = 22, cy = 20, ph = f / F * TAU;
+        V.ell(cx, cy, 6, 11, 4.5, 2.6, 'ocean');
+        V.region([6, 40, 0, 40, 0, 12], (x, y, z) => { const dy = Math.abs(y - cy), span = 18 * (1 - Math.abs(x - (cx + 2)) / 16); if (dy > span || dy < 3) return false; return Math.abs(z - (6 + Math.sin(ph) * dy * 0.22)) < 1; }, 'ocean');
+        V.paint((x, y, z, xi, yi) => Math.abs(y - cy) > 5 && (xi * 7 + yi * 3) % 11 === 0, 'e_cyan');
+        V.paint((x, y, z) => z > 7 && Math.abs(y - cy) < 1.2, 'purp');
+        V.seg(11, cy, 6, 1, cy + Math.sin(ph + 1) * 2, 6 + Math.sin(ph), 0.6, 'purp');
+        for (const s of [-1, 1]) { V.cone(32, cy + s * 3, 6, 37, cy + s * 5, 6, 1.2, 0.4, 'ocean'); V.put(32, cy + s * 3, 7, 'e_yellow'); }
+      },
+    },
+    {
+      id: 'whale', jp: 'そらクジラ', role: '友好', w: 64, h: 30, d: 26, F: 6, fps: 5,
+      desc: '星の海をゆっくり泳ぐ、とても大きな生きもの。',
+      build(V, f, F) {
+        const cy = 15, cz = 12, ph = f / F * TAU;
+        V.ell(36, cy, cz, 24, 10, 9, 'ocean'); V.ell(52, cy, cz + 1, 9, 9, 8.5, 'ocean');
+        V.paint((x, y, z) => z < cz - 3, 'white');
+        V.paint((x, y, z) => z < cz - 3 && Math.floor(x) % 3 === 0, 'hull');
+        V.paint((x, y, z) => z > cz + 6 && Math.abs(y - cy) < 2 && Math.floor(x) % 4 < 2, 'e_cyan');
+        for (const s of [-1, 1]) { V.ell(56, cy + s * 6.5, cz + 1, 1, 0.8, 1, 'e_yellow'); V.cone(42, cy + s * 8, cz - 3, 36, cy + s * 14, cz - 3 + Math.sin(ph) * 3, 2.4, 0.8, 'ocean'); }
+        const tz = cz + Math.sin(ph) * 4;
+        V.cone(13, cy, cz, 4, cy, tz, 6, 2.5, 'ocean');
+        V.region([0, 8, cy - 10, cy + 10, tz - 2, tz + 2], (x, y, z) => x < 7 && Math.abs(z - tz) < 1 && Math.abs(y - cy) <= 3 + (7 - x) * 0.9, 'ocean');
+      },
+    },
+    {
+      id: 'eel', jp: '星くいウナギ', role: '敵', w: 62, h: 30, d: 12, F: 8, fps: 10,
+      desc: 'くねくね泳いで、かみついてくる宇宙のウナギ。',
+      build(V, f, F) {
+        const cy = 15, cz = 6, N = 26, ph = f / F * TAU;
+        let prev = null;
+        for (let i = 0; i <= N; i++) {
+          const x = 54 - i * 1.95, y = cy + Math.sin(i * 0.38 - ph) * 6 * (0.25 + 0.75 * i / N), r = 3.3 * (1 - i / N * 0.65);
+          if (prev) V.seg(prev[0], prev[1], cz, x, y, cz, r, Math.floor(i / 3) % 2 ? 'purp' : 'pink');
+          if (i % 3 === 0 && i > 2 && i < N - 2) V.cone(x, y, cz + r - 0.5, x - 1, y, cz + r + 2, 0.8, 0.2, 'red');
+          prev = [x, y];
+        }
+        const hy = cy + Math.sin(-ph) * 1.5;
+        V.ell(56, hy, cz, 4.5, 3.6, 3, 'purp');
+        V.cone(57, hy, cz - 1.5, 61, hy, cz - 1.5, 1.6, 0.6, 'red');
+        V.put(58, hy - 2.5, cz + 1, 'e_yellow'); V.put(58, hy + 2.5, cz + 1, 'e_yellow');
+      },
+    },
+    {
+      id: 'beetle', jp: 'よろいコガネ', role: '敵', w: 36, h: 30, d: 18, F: 4, fps: 8,
+      desc: 'かたい殻とツノをもつ宇宙の甲虫。',
+      build(V, f, F) {
+        const cx = 17, cy = 15, cz = 8, tw = Math.sin(f / F * TAU);
+        V.ell(cx, cy, cz, 12, 9.5, 6.5, 'purp');
+        V.paint((x, y, z) => z > cz + 1 && Math.floor(x / 4) % 2 === 0, 'cryst');
+        V.paint((x, y, z) => z > cz && (Math.abs(y - cy) < 0.6 || Math.floor(x) % 4 === 0), 'gold');
+        V.ell(cx, cy, cz - 3, 10, 7, 3, 'dark');
+        V.ell(cx + 12, cy, cz - 1, 4, 4.5, 3.5, 'metal');
+        V.cone(cx + 14, cy, cz + 1, 35, cy, cz + 6, 1.8, 0.4, 'gold');
+        V.put(cx + 14, cy - 3, cz, 'e_red'); V.put(cx + 14, cy + 3, cz, 'e_red');
+        for (let k = 0; k < 3; k++) for (const s of [-1, 1]) {
+          const lx = cx - 6 + k * 6, wig = tw * (k % 2 ? 1 : -1) * 1.2;
+          V.seg(lx, cy + s * 6, cz - 2, lx + wig, cy + s * 12.5, cz - 6, 0.9, 'metal');
+          V.seg(lx + wig, cy + s * 12.5, cz - 6, lx + wig + 1, cy + s * 13.5, 0.6, 0.7, 'metal');
+        }
+      },
+    },
+    {
+      id: 'spore', jp: 'ほうしダマ', role: '中立', w: 28, h: 28, d: 26, F: 6, fps: 6,
+      desc: 'ふわふわ浮かぶ植物のような生きもの。まわりに光る胞子がただよう。',
+      build(V, f, F) {
+        const c = 14, cz = 16, ph = f / F * TAU, pul = Math.sin(ph) * 0.6;
+        V.ell(c, c, cz, 8 + pul, 8 + pul, 7 + pul, 'green');
+        V.paint((x, y, z) => hash3(Math.floor(x), Math.floor(y), Math.floor(z), 7) < 0.06, 'e_yellow');
+        V.torus(c, c, cz - 5, 7, 1.2, 'pink');
+        for (let k = 0; k < 6; k++) {
+          const a = k * TAU / 6, ox = Math.cos(a), oy = Math.sin(a);
+          let prev = [c + ox * 4, c + oy * 4, cz - 6];
+          for (let z = cz - 7; z >= 2; z -= 2) { const sw = Math.sin(z * 0.5 + ph + k) * 1.4; const pt = [c + ox * 4.5 - oy * sw, c + oy * 4.5 + ox * sw, z]; V.seg(prev[0], prev[1], prev[2], pt[0], pt[1], pt[2], 0.8, 'green'); prev = pt; }
+          V.put(prev[0], prev[1], 1, 'e_yellow');
+        }
+        for (let k = 0; k < 5; k++) { const a = ph + k * TAU / 5; V.ell(c + Math.cos(a) * 12, c + Math.sin(a) * 12, cz + Math.sin(ph * 2 + k) * 3, 1.2, 1.2, 1.2, 'e_yellow'); }
+      },
+    },
+    {
+      id: 'junk', jp: '宇宙ゴミ', role: '障害物', w: 40, h: 30, d: 14, F: 1,
+      desc: 'こわれた鉄骨やパネルのかたまり。',
+      build(V) {
+        for (const [ax, ay, az, bx, by, bz] of [[4, 6, 4, 34, 10, 6], [4, 10, 4, 34, 14, 6], [6, 6, 9, 30, 12, 11]]) V.seg(ax, ay, az, bx, by, bz, 0.7, 'metal');
+        for (let k = 0; k < 7; k++) { const x = 6 + k * 4; V.seg(x, 6.5, 4.3, x + 2, 10.5, 9.5, 0.5, 'metal'); }
+        V.box(10, 14, 3, 22, 24, 4, 'glass');
+        V.paint((x, y, z, xi, yi) => y > 14 && z < 4.2 && (xi % 3 === 0 || yi % 3 === 0), 'metal');
+        V.box(24, 16, 5, 33, 26, 6.5, 'hull');
+        V.all((x, y, z) => x > 24 && y > 16 && z > 4.9 && z < 6.6 && fbm(x * 0.3, y * 0.3, 1, 9) > 0.62, '');
+        V.seg(34, 10, 6, 37, 16, 8, 0.5, 'red'); V.seg(37, 16, 8, 35, 22, 10, 0.5, 'red');
+        V.box(4, 18, 8, 9, 23, 12, 'orange');
+      },
+    },
+  );
+  MODELS.push(
+    variant('raider_g', 'raider', '翠レイダー', '敵', '緑にぬった精鋭のレイダー。', { purp: 'green', red: 'gold' }),
+    variant('jelly_b', 'jelly', 'あおクラゲ', '中立', '青く光る、おとなしいクラゲ。', { pink: 'ice', purp: 'ocean', e_pinkL: 'e_cyan' }),
+    variant('drone_r', 'drone', '赤ドローン', '敵', '赤い警備ドローン。撃つのが速い。', { purp: 'red', gold: 'metal', e_cyan: 'e_red' }),
+  );
+
   // ---------- planet variants ----------
   function planetModel(o) {
     const ro = o.ring ? o.ring[1] : 0, half = Math.max(o.R, ro) + 2;
@@ -500,5 +678,5 @@
     m.hasGlow = m.frames.some(fr => fr.hasGlow);
   }
 
-  window.SS = { MODELS, bakeModel, TAU, Vol, MID, MATS, PAL, EMIS, hash3, fbm, vnoise };
+  window.SS = { MODELS, bakeModel, TAU, Vol, MID, MATS, PAL, EMIS, hash3, fbm, vnoise, applyRemap };
 })();

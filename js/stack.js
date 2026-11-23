@@ -92,7 +92,7 @@
     if (!r.box) { sp = { empty: true }; cache.set(key, sp); return sp; }
     const b = r.box, c = document.createElement('canvas'); c.width = b.w; c.height = b.h;
     c.getContext('2d').drawImage(m.art, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
-    sp = { c, w: b.w, h: b.h, cx: r.cx - b.x, cy: r.cy - b.y };
+    sp = { c, w: b.w, h: b.h, cx: r.cx - b.x, cy: r.cy - b.y, mid: r.cy - b.y - m.d * Math.cos(elevDeg * Math.PI / 180) / 2 };
     if (r.glow) {
       const P = 4, g = document.createElement('canvas'); g.width = b.w + P * 2; g.height = b.h + P * 2;
       const gx = g.getContext('2d'); gx.filter = 'blur(1.6px)';
@@ -105,23 +105,32 @@
     return sp;
   }
 
-  // draw so that the model's base centre lands on (x, y); scale = screen px per art px
+  // draw so that the model's base centre (or its middle, with opt.center) lands on (x, y);
+  // scale = screen px per art px; opt.roll turns the sprite on screen, opt.flip shows it from below
   function draw(ctx, id, fi, ang, elevDeg, x, y, scale, opt) {
-    const sp = sprite(id, fi, ang, elevDeg); if (!sp || sp.empty) return;
-    const dx = Math.round(x - sp.cx * scale), dy = Math.round(y - sp.cy * scale);
+    opt = opt || {};
+    const sp = sprite(id, fi, ang, elevDeg); if (!sp || sp.empty) return false;
+    const ay = opt.center ? sp.mid : sp.cy;
+    const tf = opt.roll || opt.flip;
+    let dx, dy;
+    if (tf) { ctx.save(); ctx.translate(x, y); if (opt.roll) ctx.rotate(opt.roll); if (opt.flip) ctx.scale(1, -1); dx = -sp.cx * scale; dy = -ay * scale; }
+    else { dx = Math.round(x - sp.cx * scale); dy = Math.round(y - ay * scale); }
     const dw = Math.max(1, Math.round(sp.w * scale)), dh = Math.max(1, Math.round(sp.h * scale));
-    if (opt && opt.alpha != null) ctx.globalAlpha = opt.alpha;
+    if (opt.alpha != null) ctx.globalAlpha = opt.alpha;
     ctx.drawImage(sp.c, dx, dy, dw, dh);
-    if (opt && opt.flash) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = opt.flash; ctx.drawImage(sp.c, dx, dy, dw, dh); ctx.restore(); }
-    if (sp.g && !(opt && opt.noGlow)) {
-      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (opt && opt.alpha != null ? opt.alpha : 1) * 0.9;
+    if (opt.flash) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = opt.flash; ctx.drawImage(sp.c, dx, dy, dw, dh); ctx.restore(); }
+    if (sp.g && !opt.noGlow) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (opt.alpha != null ? opt.alpha : 1) * 0.9;
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(sp.g, dx - sp.gp * scale, dy - sp.gp * scale, sp.g.width * scale, sp.g.height * scale);
       ctx.restore();
     }
-    if (opt && opt.alpha != null) ctx.globalAlpha = 1;
+    if (opt.alpha != null) ctx.globalAlpha = 1;
+    if (tf) ctx.restore();
+    return true;
   }
+  const ready = id => { const m = BY_ID[id]; return !!(m && m.frames); };
   function size(id) { const m = BY_ID[id]; return m ? { w: m.w, h: m.h, d: m.d, diag: m.diag, F: m.F, fps: m.fps || 10, bob: m.bob || 0 } : null; }
 
-  window.Stack = { draw, sprite, size, BY_ID, cacheSize: () => cache.size };
+  window.Stack = { draw, sprite, size, ready, BY_ID, cacheSize: () => cache.size };
 })();

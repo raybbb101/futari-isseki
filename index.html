@@ -63,7 +63,24 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
 .row { display: flex; align-items: center; gap: 10px; font-size: clamp(14px, 2.8vmin, 17px); }
 .row input[type=range] { flex: 1; accent-color: var(--accent); }
 .foot { color: var(--dim); font-size: clamp(11px, 2.2vmin, 13px); }
-@media (max-width: 520px) { .cols, .roles { grid-template-columns: 1fr; } }
+.book { width: min(760px, 100%); height: min(560px, 100%); }
+.bk-tabs { display: flex; gap: 6px; align-items: center; }
+.bk-tabs span { padding: 4px 10px; border: 2px solid var(--line); color: var(--dim); cursor: pointer; font-size: clamp(13px, 2.6vmin, 16px); }
+.bk-tabs span.on { color: #0b0d18; background: var(--accent); border-color: var(--accent); }
+.bk-tabs .sp { flex: 1; border: 0; }
+.bk-body { display: grid; grid-template-columns: minmax(120px, 38%) 1fr; gap: 10px; min-height: 0; flex: 1; }
+#bkList { list-style: none; margin: 0; padding: 0; overflow: auto; border: 2px solid var(--line); }
+#bkList li { padding: 4px 8px; cursor: pointer; font-size: clamp(13px, 2.6vmin, 16px); border-left: 4px solid transparent; }
+#bkList li.cur { background: rgba(255,181,71,0.16); border-left-color: var(--accent); }
+#bkList li.c-hostile { color: #ff9aa8; } #bkList li.c-friendly { color: #9cffae; } #bkList li.c-neutral { color: #ffe68a; } #bkList li.c-object { color: var(--dim); } #bkList li.c-planet { color: var(--cyan); }
+#bkDetail { overflow: auto; font-size: clamp(13px, 2.5vmin, 15px); line-height: 1.6; padding-right: 4px; }
+#bkDetail h3 { margin: 0 0 6px; font-weight: 400; font-size: clamp(18px, 3.6vmin, 22px); }
+#bkDetail h4 { margin: 10px 0 4px; font-weight: 400; color: var(--cyan); }
+#bkDetail dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0 0 6px; } #bkDetail dt { color: var(--dim); } #bkDetail dd { margin: 0; }
+#bkDetail ul { margin: 0; padding-left: 1.2em; } #bkDetail p { margin: 4px 0; } .dim { color: var(--dim); }
+.chip { font-size: 12px; padding: 0 6px; border: 1px solid currentColor; vertical-align: middle; }
+.chip.c-hostile { color: #ff9aa8; } .chip.c-friendly { color: #9cffae; } .chip.c-neutral { color: #ffe68a; } .chip.c-object { color: var(--dim); }
+@media (max-width: 520px) { .cols, .roles { grid-template-columns: 1fr; } .bk-body { grid-template-columns: 1fr; grid-template-rows: 32% 1fr; } }
 </style>
 </head>
 <body>
@@ -77,11 +94,12 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
 
   <section class="screen clear" id="s-title" hidden>
     <h1>ふたりで<b>一隻</b></h1>
-    <p class="sub">2人で1隻の宇宙船を動かす、協力シューティング（デモ版）</p>
+    <p class="sub">2人で1隻の宇宙船を動かして、宇宙を旅する（デモ版）</p>
     <nav>
       <button data-go="host">ルームをつくる<small>コードを出して、相手を待つ</small></button>
       <button data-go="join">コードで参加<small>相手のコードを入れる</small></button>
       <button data-go="solo">ソロ（お試し）<small>片方の役だけを体験</small></button>
+      <button data-go="book">図鑑<small>スキャンした生きもの・惑星</small></button>
       <button data-go="howto">そうさ説明</button>
       <button data-go="settings">せってい</button>
     </nav>
@@ -107,8 +125,8 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
   <section class="screen" id="s-lobby" hidden>
     <h2>役をえらぶ</h2>
     <div class="roles">
-      <div class="role" data-role="pilot"><h3>パイロット</h3><p>コントローラー（横画面）。船を動かして、よける。</p><div class="who"></div></div>
-      <div class="role" data-role="gunner"><h3>ガンナー</h3><p>ポケットタコ（縦画面）。コンボを入れて撃つ。</p><div class="who"></div></div>
+      <div class="role" data-role="pilot"><h3>パイロット</h3><p>コントローラー（横画面）。宇宙を自由に飛び、惑星をスキャンする。</p><div class="who"></div></div>
+      <div class="role" data-role="gunner"><h3>ガンナー</h3><p>ポケットタコ（縦画面）。照準で撃ち、スキルで戦い、敵をスキャンする。</p><div class="who"></div></div>
     </div>
     <p class="hint">←→ でえらんで A で決定。2人そろったら ホストが START で出発。</p>
     <p class="sub" id="lobbyStatus"></p>
@@ -119,7 +137,7 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
     <h2>ソロ（お試し）</h2>
     <nav>
       <button data-solo="pilot">パイロットのお試し<small>ガンナーは自動でずっと撃ち続ける</small></button>
-      <button data-solo="gunner">ガンナーのお試し<small>トレーニング：船は自動でよけ続ける</small></button>
+      <button data-solo="gunner">ガンナーのお試し<small>トレーニング：船は自動で惑星をめぐり、敵がよく来る</small></button>
       <button data-back>もどる</button>
     </nav>
   </section>
@@ -128,13 +146,15 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
     <h2>そうさ説明</h2>
     <div class="cols">
       <div><h3>パイロット（コントローラー）</h3><dl>
-        <dt>スティック／十字</dt><dd>移動</dd><dt>A</dt><dd>回避ロール（一瞬むてき）</dd><dt>B</dt><dd>シールド（エネルギーを使う）</dd>
-        <dt>RT</dt><dd>加速（エネルギーを使う）</dd><dt>X</dt><dd>ガンナーに合図</dd><dt>START</dt><dd>ポーズ</dd></dl></div>
+        <dt>左スティック</dt><dd>前後・左右に移動</dd><dt>右スティック</dt><dd>向きを変える（上下左右）</dd><dt>RB／LB</dt><dd>上へ／下へ</dd>
+        <dt>RT</dt><dd>全力加速（引力から脱出できる）</dd><dt>LT</dt><dd>ブレーキ</dd><dt>A</dt><dd>回避ロール</dd><dt>B</dt><dd>シールド</dd>
+        <dt>X</dt><dd>惑星スキャン（近くで）／中止</dd><dt>Y</dt><dd>視点（船のうしろ ⇄ コックピット）</dd><dt>SELECT</dt><dd>図鑑</dd><dt>L3</dt><dd>チルトの中心合わせ</dd></dl></div>
       <div><h3>ガンナー（ポケットタコ）</h3><dl>
-        <dt>十字＋ABXY</dt><dd>画面下のコンボを順番に入れると発射</dd><dt>L1／R1</dt><dd>ねらう敵をかえる</dd>
-        <dt>R2</dt><dd>チャージ砲（エネルギー60で、範囲の敵すべてに1発）</dd><dt>SELECT</dt><dd>パイロットに合図</dd><dt>START</dt><dd>ポーズ</dd></dl></div>
+        <dt>A 長押し</dt><dd>機関砲</dd><dt>B ためて離す</dt><dd>チャージビーム（中心に近いほど強い）</dd><dt>十字 → X</dt><dd>スキル（コンボは画面と図鑑に）</dd>
+        <dt>↑→↓← → Y</dt><dd>必殺技ノヴァ（ゲージ満タン）</dd><dt>Y 長押し</dt><dd>照準の中の相手をスキャン</dd>
+        <dt>L1／R1</dt><dd>左／右を向く（戦闘モード）</dd><dt>L2／R2</dt><dd>上／下を向く（戦闘モード）</dd><dt>SELECT</dt><dd>図鑑</dd></dl></div>
     </div>
-    <p class="hint">砲台は船の前のほう（扇形の中）しかねらえません。パイロットは敵を扇形に入れてあげてください。まちがえると少しのあいだ「ジャム」になります。キーボード：矢印=十字 X=A Z=B S=X A=Y Q=L1 R=R1 E=R2 Enter=START Shift=SELECT</p>
+    <p class="hint">ふだんはガンナーもパイロットと同じ前を見ています。敵がおそってくると「戦闘モード」になり、ガンナーは自分で向きを変えて自由にねらえます（チルトをオンにするとスマホをかたむけて回れます）。惑星の近くは引力に注意。スキャン中は船が動けないので、敵が来たらガンナーが守ります。<br>キーボード：矢印=十字／左スティック　IJKL=右スティック　X=A Z=B S=X A=Y Q=L1 R=R1 W=L2 E=R2 Enter=START Shift=SELECT</p>
     <nav><button data-back>もどる</button></nav>
   </section>
 
@@ -142,13 +162,20 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
     <h2>せってい</h2>
     <div class="row"><label for="vis">ポケットタコの見える範囲</label><input type="range" id="vis" min="40" max="100" step="2"><span id="visV"></span></div>
     <p class="hint">スマホを縦にしたときだけ使います。画面の上から何％が見えるかに合わせてください。</p>
-    <nav><button id="soundBtn">音：オン</button><button data-back>もどる</button></nav>
+    <nav><button id="stTiltP"></button><button id="stTiltG"></button><button id="stInvert"></button><button id="soundBtn">音：オン</button><button data-back>もどる</button></nav>
+    <p class="err" id="stNote"></p>
   </section>
 
   <section class="screen" id="s-pause" hidden>
     <h2>ポーズ</h2>
     <p class="sub" id="pauseInfo"></p>
-    <nav><button id="pResume">つづける</button><button id="pSwap">役をかえる<small>パイロット ⇄ ガンナー</small></button><button id="pQuit">タイトルへ</button></nav>
+    <nav><button id="pResume">つづける</button><button id="pTilt"></button><button id="pRecenter">チルトの中心を合わせる</button><button id="pSwap">役をかえる<small>パイロット ⇄ ガンナー</small></button><button id="pQuit">タイトルへ</button></nav>
+  </section>
+
+  <section class="screen book" id="s-book" hidden>
+    <div class="bk-tabs"><span id="bkTabE" class="on">敵・生きもの</span><span id="bkTabP">惑星</span><span class="sp"></span><button id="bkClose">とじる（B）</button></div>
+    <div class="bk-body"><ul id="bkList"></ul><div id="bkDetail"></div></div>
+    <p class="hint">↑↓ でえらぶ　←→ でページ　B／SELECT でとじる</p>
   </section>
 
   <section class="screen" id="s-result" hidden>
@@ -164,10 +191,13 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
 <script src="js/models2.js"></script>
 <script src="js/stack.js"></script>
 <script src="js/input.js"></script>
+<script src="js/tilt.js"></script>
 <script src="js/net.js"></script>
-<script src="js/sim.js"></script>
-<script src="js/fx.js"></script>
-<script src="js/views.js"></script>
+<script src="js/world.js"></script>
+<script src="js/fx3.js"></script>
+<script src="js/render3d.js"></script>
+<script src="js/book.js"></script>
+<script src="js/hud.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
