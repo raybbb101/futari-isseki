@@ -10,6 +10,7 @@
     pilotCtl: null, gunnerCtl: new GunnerCtl(), bot: {}, sendT: 0, snapT: 0, view: store.get('view', 0),
     vis: store.get('vis', 64) / 100, visNow: 1, partnerText: '', partnerOk: true,
     tilt: { pilot: store.get('tiltPilot', false), gunner: store.get('tiltGunner', false) }, invert: store.get('invert', false),
+    planetStyle: store.get('planetStyle', 'pixel'), saveT: 10,
     lobby: { pilot: null, gunner: null }, cursor: 'pilot', screen: 'load', loaded: false, ended: false, tiltOn: false,
   };
   Sfx.on = store.get('sound', true);
@@ -45,6 +46,7 @@
     const s = G.screen;
     if (s === 'host' || s === 'join' || s === 'lobby') { Net.close(); show('title'); }
     else if (s === 'solo' || s === 'howto' || s === 'settings') show('title');
+    else if (s === 'start') { pendingStart = null; show(Net.connected() ? 'lobby' : 'title'); if (Net.connected()) paintLobby(); }
     else if (s === 'pause') resume();
   }
   document.addEventListener('click', e => {
@@ -120,8 +122,7 @@
   for (const el of document.querySelectorAll('.role')) el.addEventListener('click', () => { G.cursor = el.dataset.role; choose(el.dataset.role); });
   $('lobbyStart').onclick = () => {
     if (!Net.isHost || !(G.lobby.pilot && G.lobby.gunner)) return;
-    const seed = (Math.random() * 1e9) | 0; Net.send({ t: 'start', seed });
-    begin('host', G.lobby.pilot === 'host' ? 'pilot' : 'gunner', seed);
+    askStart(sv => { const seed = sv ? sv.seed : newSeed(); Net.send({ t: 'start', seed, save: sv }); begin('host', G.lobby.pilot === 'host' ? 'pilot' : 'gunner', seed, sv); });
   };
 
   // ---------- network ----------
@@ -145,7 +146,7 @@
       else if (G.world && G.playing) G.world.handle(m);
     } else {
       if (m.t === 'lobby') { G.lobby = m.l; paintLobby(); }
-      else if (m.t === 'start') begin('guest', G.lobby.pilot === 'guest' ? 'pilot' : 'gunner', m.seed);
+      else if (m.t === 'start') begin('guest', G.lobby.pilot === 'guest' ? 'pilot' : 'gunner', m.seed, m.save || null);
       else if (m.t === 's' && G.rep) G.rep.snap(m, G.role);
       else if (m.t === 'e' && G.rep) for (const ev of m.l) { G.rep.event(ev); onEvent(ev, G.rep); }
       else if (m.t === 'quit') { G.partnerOk = false; G.partnerText = 'あいて：タイトルにもどりました'; }
@@ -153,12 +154,26 @@
   };
 
   // ---------- game ----------
-  function startSolo(role) { begin('solo', role, (Math.random() * 1e9) | 0); }
-  function begin(mode, role, seed) {
+  // ---------- start: new voyage or continue the saved one ----------
+  const newSeed = () => (Math.random() * 1e9) | 0;
+  let pendingStart = null;
+  function askStart(fn) {
+    const sv = store.get('save', null);
+    if (!sv) { fn(null); return; }
+    pendingStart = fn;
+    const d = new Date(sv.at), pad = n => String(n).padStart(2, '0');
+    $('stInfo').textContent = `前回の旅：${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}　飛んだ時間 ${Math.floor(sv.T / 60)}分　船体 ${Math.ceil(sv.hp)}/${W3.MAXHP}　スキャンした惑星 ${sv.stats.scansP}`;
+    show('start');
+  }
+  $('stCont').onclick = () => { const f = pendingStart; pendingStart = null; if (f) f(store.get('save', null)); };
+  $('stNew').onclick = () => { const f = pendingStart; pendingStart = null; if (f) f(null); };
+  function startSolo(role) { askStart(sv => begin('solo', role, sv ? sv.seed : newSeed(), sv)); }
+  function begin(mode, role, seed, save) {
     G.mode = mode; G.role = role; G.seed = seed; G.playing = true; G.ended = false; store.set('lastRole', role);
     FX3.reset(); G.pilotCtl = new PilotCtl(); G.gunnerCtl = new GunnerCtl(); G.bot = {}; HUD.camS.init = false;
-    if (mode === 'guest') { G.rep = new Replica(seed); G.world = null; G.st = G.rep; }
-    else { G.world = new World(seed, { training: mode === 'solo' && role === 'gunner' }); G.rep = null; G.st = G.world; }
+    if (mode === 'guest') { G.rep = new Replica(seed, save); G.world = null; G.st = G.rep; }
+    else { G.world = new World(seed, { training: mode === 'solo' && role === 'gunner', save }); G.rep = null; G.st = G.world; }
+    G.saveT = 10;
     G.partnerText = mode === 'solo' ? (role === 'pilot' ? 'ソロ：ガンナーは自動で撃ち続ける' : 'ソロ（トレーニング）：船は自動で飛ぶ') : G.partnerText;
     G.training = mode === 'solo' && role === 'gunner';
     applyTilt(); lockOrientation(role); resize();
@@ -221,7 +236,7 @@
       else FX3.toast(`${name}：もう図鑑にのっています`, '#8b90b3', 2);
     }
     if (k === 'pause') { if (ev[1]) openPause(); else if (G.screen === 'pause') show(null); }
-    if (k === 'end') { G.ended = true; setTimeout(() => showResult(ev[1], ev[2], ev[3]), 1800); }
+    if (k === 'end') { G.ended = true; if (G.mode !== 'guest') store.set('save', null); setTimeout(() => showResult(ev[1], ev[2], ev[3]), 1800); }
   }
   function gameTick(dt) {
     const st = G.st, inMenu = G.screen === 'pause' || G.screen === 'result';
@@ -239,6 +254,7 @@
       if (G.role === 'gunner') gunnerOut(G.gunnerCtl.update(dt, w, busy ? idleG : gunnerInput()), w, local);
       else if (G.mode === 'solo') for (const m of G.gunnerCtl.update(dt, w, botGunnerInput(G.gunnerCtl, w, dt))) if (!m.local) w.handle(m);
       w.step(dt);
+      G.saveT -= dt; if (G.saveT <= 0 && !w.over) { G.saveT = 10; saveNow(); }
       const evs = w.out; w.out = [];
       for (const ev of evs) onEvent(ev, w);
       if (G.mode === 'host') { if (evs.length) Net.send({ t: 'e', l: evs }); G.snapT -= dt; if (G.snapT <= 0) { G.snapT = 0.125; Net.send(w.snap()); } }
@@ -251,6 +267,7 @@
     if (G.gunnerCtl.missT > 0) G.gunnerCtl.missT -= dt;
     FX3.step(dt);
   }
+  function saveNow() { if (G.world && !G.world.over && G.mode !== 'guest') store.set('save', G.world.saveState()); }
   function togglePause() {
     if (G.mode === 'solo') { G.world.paused = true; openPause(); }
     else if (G.mode === 'host') G.world.handle({ t: 'pause', on: true });
@@ -271,10 +288,10 @@
   $('pTilt').onclick = async () => { G.tilt[G.role] = !G.tilt[G.role]; store.set(G.role === 'pilot' ? 'tiltPilot' : 'tiltGunner', G.tilt[G.role]); await applyTilt(); openPause(); Menu.i = 1; Menu.paint(); };
   $('pRecenter').onclick = () => { Tilt.recenter(); FX3.toast('チルトの中心を合わせました', '#7ff6ff', 1.2); };
   $('pSwap').onclick = () => { G.role = G.role === 'pilot' ? 'gunner' : 'pilot'; G.world.training = G.role === 'gunner'; G.training = G.world.training; lockOrientation(G.role); resize(); G.partnerText = G.role === 'pilot' ? 'ソロ：ガンナーは自動で撃ち続ける' : 'ソロ（トレーニング）：船は自動で飛ぶ'; G.bot = {}; applyTilt(); resume(); };
-  $('pQuit').onclick = $('rQuit').onclick = () => { if (G.mode !== 'solo') { Net.send({ t: 'quit' }); setTimeout(() => Net.close(), 200); } G.playing = false; G.world = G.rep = null; Book.hide(); if (Tilt.on) Tilt.disable(); try { screen.orientation.unlock(); } catch (e) { /* ignore */ } resize(); show('title'); };
+  $('pQuit').onclick = $('rQuit').onclick = () => { saveNow(); if (G.mode !== 'solo') { Net.send({ t: 'quit' }); setTimeout(() => Net.close(), 200); } G.playing = false; G.world = G.rep = null; Book.hide(); if (Tilt.on) Tilt.disable(); try { screen.orientation.unlock(); } catch (e) { /* ignore */ } resize(); show('title'); };
   $('rAgain').onclick = () => {
-    if (G.mode === 'solo') begin('solo', G.role, (Math.random() * 1e9) | 0);
-    else if (G.mode === 'host') { const seed = (Math.random() * 1e9) | 0; Net.send({ t: 'start', seed }); begin('host', G.role, seed); }
+    if (G.mode === 'solo') begin('solo', G.role, newSeed(), null);
+    else if (G.mode === 'host') { const seed = newSeed(); Net.send({ t: 'start', seed }); begin('host', G.role, seed, null); }
   };
   function showResult(reason, info, s) {
     $('rTitle').textContent = reason === 'crash' ? `${info} に墜落…` : reason === 'sun' ? '太陽に突入…' : 'ふたり号 撃沈…';
@@ -292,7 +309,9 @@
     $('stTiltG').innerHTML = `ガンナーのチルト：${G.tilt.gunner ? 'オン' : 'オフ'}<small>左右にかたむけると回り続け、手前に起こすと上・向こうへ倒すと下を見る</small>`;
     $('stInvert').innerHTML = `パイロットの上下：${G.invert ? '反転（スティック下で上を向く）' : 'ふつう'}`;
     $('soundBtn').innerHTML = '音：' + (Sfx.on ? 'オン' : 'オフ');
+    $('stPlanet').innerHTML = `惑星の見た目：${G.planetStyle === 'smooth' ? 'なめらか' : 'ドット（スプライトスタック風）'}`;
   }
+  $('stPlanet').onclick = () => { G.planetStyle = G.planetStyle === 'smooth' ? 'pixel' : 'smooth'; store.set('planetStyle', G.planetStyle); paintSettings(); };
   $('vis').addEventListener('input', e => { G.vis = +e.target.value / 100; $('visV').textContent = e.target.value + '%'; store.set('vis', +e.target.value); resize(); });
   $('stTiltP').onclick = async () => { G.tilt.pilot = !G.tilt.pilot; if (G.tilt.pilot && !(await Tilt.enable())) { G.tilt.pilot = false; alertTilt(); } else if (Tilt.on) Tilt.disable(); store.set('tiltPilot', G.tilt.pilot); paintSettings(); };
   $('stTiltG').onclick = async () => { G.tilt.gunner = !G.tilt.gunner; if (G.tilt.gunner && !(await Tilt.enable())) { G.tilt.gunner = false; alertTilt(); } else if (Tilt.on) Tilt.disable(); store.set('tiltGunner', G.tilt.gunner); paintSettings(); };

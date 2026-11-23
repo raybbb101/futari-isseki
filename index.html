@@ -142,6 +142,12 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
     </nav>
   </section>
 
+  <section class="screen" id="s-start" hidden>
+    <h2>旅のはじめかた</h2>
+    <p class="sub" id="stInfo"></p>
+    <nav><button id="stCont">つづきから<small>前回の旅のつづき（図鑑はいつも残っています）</small></button><button id="stNew">はじめから<small>新しい宇宙で旅をはじめる（前回の旅は上書きされます）</small></button><button data-back>もどる</button></nav>
+  </section>
+
   <section class="screen" id="s-howto" hidden>
     <h2>そうさ説明</h2>
     <div class="cols">
@@ -162,7 +168,7 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
     <h2>せってい</h2>
     <div class="row"><label for="vis">ポケットタコの見える範囲</label><input type="range" id="vis" min="40" max="100" step="2"><span id="visV"></span></div>
     <p class="hint">スマホを縦にしたときだけ使います。画面の上から何％が見えるかに合わせてください。</p>
-    <nav><button id="stTiltP"></button><button id="stTiltG"></button><button id="stInvert"></button><button id="soundBtn">音：オン</button><button data-back>もどる</button></nav>
+    <nav><button id="stTiltP"></button><button id="stTiltG"></button><button id="stInvert"></button><button id="stPlanet"></button><button id="soundBtn">音：オン</button><button data-back>もどる</button></nav>
     <p class="err" id="stNote"></p>
   </section>
 

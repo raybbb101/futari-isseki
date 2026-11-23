@@ -83,19 +83,23 @@
     const L = norm(sub(W3.SUN.p, pl.p));
     if (!tex || rad < 2.5) { if (!tex) return; const [r, g, b] = tex.avg; ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.beginPath(); ctx.arc(pr.x, pr.y, Math.max(1, rad), 0, TAU); ctx.fill(); return; }
     // size of the offscreen image; re-render every other frame (or when the size jumps)
-    const S = Math.max(8, Math.min(MAXS, Math.ceil(rad * ext * 2)));
+    // pixel style (default): a pixel grid of up to ~170 px across, drawn crisp like the sprite stacks
+    const pix = !(window.G && G.planetStyle === 'smooth');
+    const pxs = pix ? Math.max(2, rad * ext * 2 / 170) : 1;
+    const S = Math.max(8, Math.min(MAXS, Math.ceil(rad * ext * 2 / pxs)));
     let c = cache.get(pl.name);
-    const stale = !c || Math.abs(c.S - S) > S * 0.15 || (frame + pl.R) % 2 === 0;
-    if (!c || c.S !== S && stale) { const cv = c && c.cv || document.createElement('canvas'); cv.width = S; cv.height = S; c = { cv, ctx: cv.getContext('2d'), S, img: cv.getContext('2d').createImageData(S, S) }; cache.set(pl.name, c); }
-    if (stale) render(c, pl, tex, look, ring, ext, L, T);
+    const stale = !c || c.pix !== pix || Math.abs(c.S - S) > S * 0.15 || (frame + pl.R) % 2 === 0;
+    if (!c || (c.S !== S || c.pix !== pix) && stale) { const cv = c && c.cv || document.createElement('canvas'); cv.width = S; cv.height = S; c = { cv, ctx: cv.getContext('2d'), S, pix, img: cv.getContext('2d').createImageData(S, S) }; cache.set(pl.name, c); }
+    if (stale) render(c, pl, tex, look, ring, ext, L, T, pix);
     const D = rad * ext * 2;
-    ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.save(); ctx.imageSmoothingEnabled = !pix; ctx.imageSmoothingQuality = 'high';
     // atmosphere halo
     if (look.atm) { const [r, g, b, a] = look.atm, glow = ctx.createRadialGradient(pr.x, pr.y, rad * 0.95, pr.x, pr.y, rad * 1.22); glow.addColorStop(0, `rgba(${r},${g},${b},${0.35 * a})`); glow.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = glow; ctx.fillRect(pr.x - rad * 1.25, pr.y - rad * 1.25, rad * 2.5, rad * 2.5); }
     ctx.drawImage(c.cv, pr.x - D / 2, pr.y - D / 2, D, D);
     ctx.restore();
   }
-  function render(c, pl, tex, look, ring, ext, L, T) {
+  const BAY = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  function render(c, pl, tex, look, ring, ext, L, T, pix) {
     const { S, img } = c, d = img.data, B = R3.cam.B, R = B.r, U = B.u, Fw = B.f;
     const t = pl.tilt || 0, ct = Math.cos(t), st = Math.sin(t), spin = (pl.spin || 0.02) * T;
     const N = [0, -st, ct];                       // the planet's axis (and ring plane normal)
@@ -113,7 +117,14 @@
           const by = n[1] * ct + n[2] * st, bz = -n[1] * st + n[2] * ct;
           const lon = Math.atan2(by, n[0]) - spin, lat = Math.asin(Math.max(-1, Math.min(1, bz)));
           const u = toU(lon), v = Math.min(TH - 1, Math.floor((0.5 - lat / Math.PI) * TH)), k = v * TW + u;
-          const dl = n[0] * L[0] + n[1] * L[1] + n[2] * L[2], lit = sm(-0.12, 0.35, dl);
+          const dl = n[0] * L[0] + n[1] * L[1] + n[2] * L[2];
+          let lit = sm(-0.12, 0.35, dl);
+          if (pix) {
+            // stepped light with ordered dithering, and a faint highlight on each stacked layer (like sprite-stack slices)
+            lit = Math.min(1, Math.floor(lit * 5 + BAY[(y & 3) * 4 + (x & 3)] / 16) / 5);
+            const ly = (n[2] + 1) * 13, f = ly - Math.floor(ly);
+            if (f < 0.16 && n[2] > -0.9) lit *= 1.08;
+          }
           r = tex.col[k * 3]; g = tex.col[k * 3 + 1]; b = tex.col[k * 3 + 2];
           if (cl) { const cu = toU(Math.atan2(by, n[0]) - spin * 1.25), ca = tex.cl[v * TW + cu] / 255; r += (245 - r) * ca; g += (248 - g) * ca; b += (255 - b) * ca; }
           const amb = 0.05;
@@ -121,7 +132,8 @@
           if (emOn) { const e = tex.em[k] / 255 * (1 - lit * 0.6); r += 255 * e * 0.9; g += 110 * e * 0.9; b += 40 * e * 0.9; }
           if (atm) { const fr = Math.pow(1 - qz, 3) * atm[3] * (0.15 + 0.85 * sm(-0.3, 0.4, dl)); r += atm[0] * fr; g += atm[1] * fr; b += atm[2] * fr; }
           a = 255;
-          if (qz < 0.06) a = Math.round(255 * qz / 0.06);
+          if (!pix && qz < 0.06) a = Math.round(255 * qz / 0.06);
+          if (pix) { r = Math.round(r / 18) * 18; g = Math.round(g / 18) * 18; b = Math.round(b / 18) * 18; }
         }
         if (ring && Math.abs(fN) > 1e-4) {
           const q0 = [qx * R[0] + qy * U[0], qx * R[1] + qy * U[1], qx * R[2] + qy * U[2]];
@@ -139,6 +151,15 @@
           }
         }
         d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = a;
+      }
+    }
+    if (pix) {
+      // dark 1px outline around the planet (and rings), like the sprites
+      const al = new Uint8Array(S * S); for (let i = 0; i < S * S; i++) al[i] = d[i * 4 + 3] > 140 ? 1 : 0;
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+        const i = y * S + x; if (al[i]) { d[i * 4 + 3] = 255; continue; }
+        if ((x > 0 && al[i - 1]) || (x < S - 1 && al[i + 1]) || (y > 0 && al[i - S]) || (y < S - 1 && al[i + S])) { const j = i * 4; d[j] = 7; d[j + 1] = 6; d[j + 2] = 13; d[j + 3] = 255; }
+        else d[i * 4 + 3] = 0;
       }
     }
     c.ctx.putImageData(img, 0, 0);

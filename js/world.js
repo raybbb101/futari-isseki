@@ -159,7 +159,19 @@
       this.out = []; this.paused = false; this.over = false;
       this.encT = opt.training ? 25 : 50; this.training = !!opt.training;
       this.stats = { time: 0, kills: 0, scansE: 0, scansP: 0, hits: 0 };
-      this.repT = 0;
+      this.repT = 0; this.dead = [];
+      if (opt.save) this.load(opt.save);
+    }
+    // ---------- save / continue ----------
+    saveState() {
+      const sh = this.ship;
+      return { v: 1, seed: this.seed, T: Math.round(this.T * 10) / 10, at: Date.now(), ship: { p: sh.p.map(r1), v: sh.v.map(Math.round), yaw: sh.yaw, pitch: sh.pitch }, hp: this.hp, en: Math.round(this.en), ult: Math.round(this.ult), dead: [...this.dead], stats: Object.assign({}, this.stats) };
+    }
+    load(sv) {
+      this.T = sv.T; updatePlanets(this.T);
+      Object.assign(this.ship, { p: [...sv.ship.p], v: [...sv.ship.v], yaw: sv.ship.yaw, pitch: sv.ship.pitch });
+      this.hp = sv.hp; this.en = sv.en; this.ult = sv.ult; this.dead = [...sv.dead]; Object.assign(this.stats, sv.stats);
+      for (const id of sv.dead) { const e = this.ents.get(id); if (e) { e.dead = true; this.ents.delete(id); } }
     }
     ev(...a) { this.out.push(a); }
     say(t, d = 3) { this.ev('msg', t, d); }
@@ -368,7 +380,7 @@
       if (e.hp <= 0) this.kill(e, true);
     }
     kill(e, credit) {
-      if (e.dead) return; e.dead = true; this.ents.delete(e.id);
+      if (e.dead) return; e.dead = true; this.ents.delete(e.id); if (e.id < 100000) this.dead.push(e.id);
       this.ev('k', e.id, r1(e.p[0]), r1(e.p[1]), r1(e.p[2]), Math.round(e.r));
       if (e.d.burst) { const c = { p: [...e.p], r: 160 * e.s, t: 4 }; this.clouds.push(c); this.ev('cloud', r1(c.p[0]), r1(c.p[1]), r1(c.p[2]), Math.round(c.r)); }
       if (!credit) return;
@@ -479,13 +491,17 @@
 
   // ---------- guest replica ----------
   class Replica {
-    constructor(seed) {
+    constructor(seed, save) {
       const g = generate(seed), r = rngOf(1);
       this.ents = new Map(g.list.map(e => [e.id, e])); this.rng = r;
       this.T = 0; this.ship = { p: add(STATION, [320, -40, 60]), v: [0, 0, 0], yaw: 0, pitch: 0, roll: 0, flags: 0 }; this.shipT = null;
       this.gun = { gy: 0, gp: 0 }; this.gunT = null;
       this.hp = MAXHP; this.en = 100; this.ult = 0; this.pow = 0; this.mode = 'explore'; this.scan = null;
       this.shots = new Map(); this.bul = new Map(); this.clouds = []; this.paused = false; this.over = false; this.lastSnap = 0; this.rep = true;
+      if (save) {
+        this.T = save.T; updatePlanets(this.T); this.ship.p = [...save.ship.p]; this.ship.yaw = save.ship.yaw; this.ship.pitch = save.ship.pitch; this.hp = save.hp;
+        for (const id of save.dead) this.ents.delete(id);
+      }
     }
     event(ev) {
       const k = ev[0];
@@ -609,15 +625,19 @@
       const out = [];
       for (const k in this.cds) this.cds[k] = Math.max(0, this.cds[k] - dt);
       if (st.paused || st.over) return out;
-      if (inp.l1 && inp.r1) { this.gy += wrapA(0 - this.gy) * Math.min(1, dt * 6); this.gp += (0 - this.gp) * Math.min(1, dt * 6); inp = Object.assign({}, inp, { l1: false, r1: false }); this.homing = true; }
-      const free = true;
-      if (inp.aim) { this.gy += wrapA(inp.aim.gy - this.gy) * Math.min(1, dt * 5); this.gp += (inp.aim.gp - this.gp) * Math.min(1, dt * 5); }
-      else if (free) {
+      // the turret view is stabilised: it keeps looking at the same place in space while the pilot turns,
+      // and only moves when the gunner moves it (L1+R1 snaps it back to the ship's front)
+      const sh = st.ship;
+      if (this.ay == null) { this.ay = sh.yaw; this.ap = sh.pitch; }
+      if (inp.l1 && inp.r1) { this.ay += wrapA(sh.yaw - this.ay) * Math.min(1, dt * 6); this.ap += (sh.pitch - this.ap) * Math.min(1, dt * 6); inp = Object.assign({}, inp, { l1: false, r1: false, tl: 0 }); }
+      if (inp.aim) { this.ay += wrapA(sh.yaw + inp.aim.gy - this.ay) * Math.min(1, dt * 5); this.ap += (sh.pitch + inp.aim.gp - this.ap) * Math.min(1, dt * 5); }
+      else {
         const yr = ((inp.l1 ? 1 : 0) - (inp.r1 ? 1 : 0)) * 1.8 - (inp.tl || 0) * 2.6;
-        this.gy = wrapA(this.gy + yr * dt);
-        if (inp.tilt) this.gp += (clamp((inp.tp || 0) * 1.5, -1.25, 1.25) - this.gp) * Math.min(1, dt * 6);
-        else this.gp = clamp(this.gp + ((inp.l2 ? 1 : 0) - (inp.r2 ? 1 : 0)) * 1.3 * dt, -1.25, 1.25);
-      } else { this.gy += wrapA(0 - this.gy) * Math.min(1, dt * 3); this.gp += (0 - this.gp) * Math.min(1, dt * 3); }
+        this.ay = wrapA(this.ay + yr * dt);
+        if (inp.tilt) this.ap += (clamp((inp.tp || 0) * 1.5, -1.4, 1.4) - this.ap) * Math.min(1, dt * 6);
+        else this.ap = clamp(this.ap + ((inp.l2 ? 1 : 0) - (inp.r2 ? 1 : 0)) * 1.3 * dt, -1.45, 1.45);
+      }
+      this.gy = wrapA(this.ay - sh.yaw); this.gp = this.ap - sh.pitch;
       st.gun.gy = this.gy; st.gun.gp = this.gp;
       const dir = this.dir(st), q = dir.map(v => Math.round(v * 1000) / 1000);
       this.target = this.pick(st, dir);

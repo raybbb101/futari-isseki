@@ -148,7 +148,7 @@
     let ox = 0, oy = 0; if (FX3.shake > 0) { ox = (Math.random() - 0.5) * FX3.shake * 30; oy = (Math.random() - 0.5) * FX3.shake * 30; }
     const focal = Math.max(W, VH) * 0.78;
     const B = basis(sh.yaw, sh.pitch);
-    R3.setCam(add(sh.p, mul(B.u, 7)), sh.yaw + st.gun.gy, W3.clamp(sh.pitch + st.gun.gp, -1.5, 1.5), wrapA(sh.roll) * 0.6, W, VH, focal, VH / 2 + oy);
+    R3.setCam(add(sh.p, mul(B.u, 7)), sh.yaw + st.gun.gy, W3.clamp(sh.pitch + st.gun.gp, -1.5, 1.5), 0, W, VH, focal, VH / 2 + oy);
     R3.cam.cx += ox;
     R3.drawSky(ctx, t);
     R3.drawDust(ctx, sh.v, 1.4);
@@ -180,7 +180,7 @@
     text(ctx, 'ノヴァ', m, m + fs * 2.2, fs * 0.75, C.dim); bar(ctx, m + fs * 3, m + fs * 2.2 + 2, W * 0.38 - fs * 0.7, fs * 0.5, st.ult / 100, st.ult >= 100 ? (Math.floor(t * 6) % 2 ? '#ff8ad8' : '#ffe14a') : '#c69bff');
     const chip = st.mode === 'combat' ? '戦闘モード' : st.scan ? 'スキャン中：船は動けない' : '探索中';
     text(ctx, chip, m, m + fs * 3.3, fs * 0.75, st.mode === 'combat' ? C.red : st.scan ? C.cyan : C.hp);
-    text(ctx, G.tiltOn ? 'スマホをかたむけて向きを変える' : 'L1/R1：左右　L2/R2：上下　L1+R1：前へ', m + fs * (st.mode === 'combat' ? 5 : st.scan ? 11.5 : 3.2), m + fs * 3.35, fs * 0.6, C.dim);
+    text(ctx, G.tiltOn ? 'スマホをかたむけて向きを変える（船が曲がっても向きは変わらない）' : 'L1/R1：左右　L2/R2：上下　L1+R1：船の前へ', m + fs * (st.mode === 'combat' ? 5 : st.scan ? 11.5 : 3.2), m + fs * 3.35, fs * 0.6, C.dim);
     if (st.scan && st.mode === 'combat') text(ctx, 'スキャン中で船は動けない！ 守って！', m, m + fs * 4.4, fs * 0.72, C.cyan);
     if (st.pow > 0) text(ctx, `攻撃力アップ ${Math.ceil(st.pow)}`, W - m, m, fs * 0.72, C.yel, 'right');
     // how far the gunner has turned from the ship's nose
