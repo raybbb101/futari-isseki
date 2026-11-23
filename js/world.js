@@ -152,7 +152,7 @@
       this.seed = seed; this.rng = rngOf(seed ^ 0x5bd1e995); this.T = 0;
       const g = generate(seed); this.ents = new Map(g.list.map(e => [e.id, e])); this.nid = 100000; this.gid = g.nextG + 1000;
       this.ship = { p: add(STATION, [320, -40, 60]), v: [0, 0, 0], yaw: 0, pitch: 0, roll: 0, flags: 0 };
-      this.gun = { gy: 0, gp: 0 };
+      this.gun = { gy: 0, gp: 0, lk: 0 };
       this.hp = MAXHP; this.en = 100; this.ult = 0; this.pow = 0; this.inv = 0;
       this.mode = 'explore'; this.combatT = 0; this.scan = null;
       this.shots = new Map(); this.bul = new Map(); this.clouds = []; this.sid = 1;
@@ -418,7 +418,7 @@
       const sh = this.ship;
       switch (m.t) {
         case 'p': sh.p = m.p; sh.v = m.v; sh.yaw = m.y / 1000; sh.pitch = m.pt / 1000; sh.roll = m.r / 1000; sh.flags = m.f; break;
-        case 'g': this.gun.gy = m.gy / 1000; this.gun.gp = m.gp / 1000; break;
+        case 'g': this.gun.gy = m.gy / 1000; this.gun.gp = m.gp / 1000; this.gun.lk = m.lk || 0; break;
         case 'fire': this.bullet(norm(m.d), 'gun', 1500, 4, 1.1, 0.012); break;
         case 'beam': {
           const dir = norm(m.d), c = clamp(m.c, 0, 1), hits = this.rayHits(sh.p, dir, 2400, 22), h = hits[0];
@@ -484,7 +484,7 @@
         t: 's', T: Math.round(this.T * 100) / 100, hp: this.hp, en: Math.round(this.en), u: Math.round(this.ult), pw: Math.round(this.pow), md: this.mode === 'combat' ? 1 : 0,
         sc: this.scan ? [this.scan.pi, r1(this.scan.t), this.scan.dur] : 0,
         sh: [r1(sh.p[0]), r1(sh.p[1]), r1(sh.p[2]), Math.round(sh.v[0]), Math.round(sh.v[1]), Math.round(sh.v[2]), Math.round(sh.yaw * 1000), Math.round(sh.pitch * 1000), Math.round(sh.roll * 1000), sh.flags],
-        g: [Math.round(this.gun.gy * 1000), Math.round(this.gun.gp * 1000)], e,
+        g: [Math.round(this.gun.gy * 1000), Math.round(this.gun.gp * 1000), this.gun.lk || 0], e,
       };
     }
   }
@@ -495,7 +495,7 @@
       const g = generate(seed), r = rngOf(1);
       this.ents = new Map(g.list.map(e => [e.id, e])); this.rng = r;
       this.T = 0; this.ship = { p: add(STATION, [320, -40, 60]), v: [0, 0, 0], yaw: 0, pitch: 0, roll: 0, flags: 0 }; this.shipT = null;
-      this.gun = { gy: 0, gp: 0 }; this.gunT = null;
+      this.gun = { gy: 0, gp: 0, lk: 0 }; this.gunT = null;
       this.hp = MAXHP; this.en = 100; this.ult = 0; this.pow = 0; this.mode = 'explore'; this.scan = null;
       this.shots = new Map(); this.bul = new Map(); this.clouds = []; this.paused = false; this.over = false; this.lastSnap = 0; this.rep = true;
       if (save) {
@@ -522,7 +522,7 @@
       this.T = m.T; this.hp = m.hp; this.en = m.en; this.ult = m.u; this.pow = m.pw; this.mode = m.md ? 'combat' : 'explore';
       this.scan = m.sc ? { pi: m.sc[0], t: m.sc[1], dur: m.sc[2] } : null; this.lastSnap = this.T;
       if (role !== 'pilot') { const s = m.sh; this.shipT = { p: [s[0], s[1], s[2]], v: [s[3], s[4], s[5]], yaw: s[6] / 1000, pitch: s[7] / 1000, roll: s[8] / 1000, flags: s[9] }; this.ship.flags = s[9]; }
-      if (role !== 'gunner') this.gunT = { gy: m.g[0] / 1000, gp: m.g[1] / 1000 };
+      if (role !== 'gunner') { this.gunT = { gy: m.g[0] / 1000, gp: m.g[1] / 1000 }; this.gun.lk = m.g[2] || 0; }
       for (const [id, x, y, z, yw, pt, hp, fl] of m.e) {
         const e = this.ents.get(id); if (!e) continue;
         if (!e.tp || this.T - e.seen > 1) { e.p = [x, y, z]; e.yaw = yw / 100; }
@@ -611,6 +611,23 @@
   class GunnerCtl {
     constructor() { this.gy = 0; this.gp = 0; this.fireT = 0; this.charge = 0; this.cds = {}; this.buf = []; this.bufT = 0; this.scanT = 0; this.scanId = 0; this.yUsed = false; this.target = null; this.botT = 0; }
     dir(st) { const sh = st.ship; return fwdOf(sh.yaw + this.gy, clamp(sh.pitch + this.gp, -1.5, 1.5)); }
+    // nearest enemy (attackers first), else the nearest creature or machine
+    nearest(st, range) {
+      const sh = st.ship; let best = null, bs = 1e9;
+      for (const e of st.ents.values()) {
+        if (e.dead || !(e.hp > 0) || e.d.cat === 'object' || e.type === 'station' || (st.rep && !e.still && st.T - e.seen > 1)) continue;
+        const dl = len(sub(e.p, sh.p)); if (dl > range) continue;
+        const score = dl * (e.d.cat === 'hostile' ? (e.st === 'attack' ? 0.5 : 0.8) : 1.6);
+        if (score < bs) { bs = score; best = e; }
+      }
+      return best;
+    }
+    // called when one of the gunner's shots hits something: lock on to it if nothing is locked
+    onHit(st, id) {
+      if (this.lock) return false;
+      const e = st.ents.get(id); if (!e || e.dead || e.d.cat === 'object' || e.type === 'station') return false;
+      this.lock = id; return true;
+    }
     pick(st, dir) {
       const o = st.ship.p; let best = null, bestA = 1;
       for (const e of st.ents.values()) {
@@ -626,17 +643,35 @@
       for (const k in this.cds) this.cds[k] = Math.max(0, this.cds[k] - dt);
       if (st.paused || st.over) return out;
       // the turret view is stabilised: it keeps looking at the same place in space while the pilot turns,
-      // and only moves when the gunner moves it (L1+R1 snaps it back to the ship's front)
+      // and only moves when the gunner moves it.
+      // Lock-on: hitting an enemy (or L1+R1) locks it, and the view then follows it on its own.
       const sh = st.ship;
       if (this.ay == null) { this.ay = sh.yaw; this.ap = sh.pitch; }
-      if (inp.l1 && inp.r1) { this.ay += wrapA(sh.yaw - this.ay) * Math.min(1, dt * 6); this.ap += (sh.pitch - this.ap) * Math.min(1, dt * 6); inp = Object.assign({}, inp, { l1: false, r1: false, tl: 0 }); }
-      if (inp.aim) { this.ay += wrapA(sh.yaw + inp.aim.gy - this.ay) * Math.min(1, dt * 5); this.ap += (sh.pitch + inp.aim.gp - this.ap) * Math.min(1, dt * 5); }
-      else {
+      if (this.lock) {
+        const e = st.ents.get(this.lock);
+        if (!e || e.dead || len(sub(e.p, sh.p)) > 2600 || (st.rep && !e.still && st.T - e.seen > 1)) { this.lock = 0; out.push({ local: 'unlock', lost: true }); }
+      }
+      const both = !!(inp.l1 && inp.r1);
+      if (both && !this.bothHeld) {
+        if (this.lock) { this.lock = 0; out.push({ local: 'unlock' }); }
+        else { const e = this.nearest(st, 1800); if (e) { this.lock = e.id; out.push({ local: 'lock', type: e.type }); } else this.snap = 0.7; }
+      }
+      this.bothHeld = both;
+      if (both) inp = Object.assign({}, inp, { l1: false, r1: false, tl: 0 });
+      const manual = !both && (inp.l1 || inp.r1 || inp.l2 || inp.r2 || Math.abs(inp.tl || 0) > 0.45);
+      if (this.lock && manual && !inp.aim) { this.lock = 0; out.push({ local: 'unlock' }); }
+      if (this.snap > 0) { this.snap -= dt; this.ay += wrapA(sh.yaw - this.ay) * Math.min(1, dt * 6); this.ap += (sh.pitch - this.ap) * Math.min(1, dt * 6); }
+      else if (inp.aim) { this.ay += wrapA(sh.yaw + inp.aim.gy - this.ay) * Math.min(1, dt * 5); this.ap += (sh.pitch + inp.aim.gp - this.ap) * Math.min(1, dt * 5); }
+      else if (this.lock) {
+        const e = st.ents.get(this.lock), rel = sub(e.p, sh.p), dl = len(rel) || 1;
+        this.ay += wrapA(Math.atan2(rel[1], rel[0]) - this.ay) * Math.min(1, dt * 9); this.ap += (Math.asin(clamp(rel[2] / dl, -1, 1)) - this.ap) * Math.min(1, dt * 9);
+      } else {
         const yr = ((inp.l1 ? 1 : 0) - (inp.r1 ? 1 : 0)) * 1.8 - (inp.tl || 0) * 2.6;
         this.ay = wrapA(this.ay + yr * dt);
         if (inp.tilt) this.ap += (clamp((inp.tp || 0) * 1.5, -1.4, 1.4) - this.ap) * Math.min(1, dt * 6);
         else this.ap = clamp(this.ap + ((inp.l2 ? 1 : 0) - (inp.r2 ? 1 : 0)) * 1.3 * dt, -1.45, 1.45);
       }
+      st.gun.lk = this.lock || 0;
       this.gy = wrapA(this.ay - sh.yaw); this.gp = this.ap - sh.pitch;
       st.gun.gy = this.gy; st.gun.gp = this.gp;
       const dir = this.dir(st), q = dir.map(v => Math.round(v * 1000) / 1000);
@@ -662,7 +697,7 @@
       } else { if (!inp.yDown) this.yUsed = false; this.scanT = 0; }
       return out;
     }
-    msg() { return { t: 'g', gy: Math.round(this.gy * 1000), gp: Math.round(this.gp * 1000) }; }
+    msg() { return { t: 'g', gy: Math.round(this.gy * 1000), gp: Math.round(this.gp * 1000), lk: this.lock || 0 }; }
   }
 
   // ---------- solo trial helpers ----------

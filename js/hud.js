@@ -84,6 +84,9 @@
       const known = Book.has('p', i);
       text(ctx, `${known ? pl.name : '未知の惑星'}　${km(len(sub(pl.p, sh.p)) - pl.R)}${known ? ' ✓' : ''}`, pp.x, pp.y + rad + 6, fs * 0.7, known ? C.dim : C.cyan, 'center');
     });
+    // the gunner's locked target
+    const glk = st.gun.lk && st.ents.get(st.gun.lk);
+    if (glk && !glk.dead) { const lp = R3.proj(glk.p); if (lp) { const r = Math.max(10, glk.r * lp.k * 1.5); ctx.strokeStyle = C.accent; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(lp.x, lp.y - r); ctx.lineTo(lp.x + r, lp.y); ctx.lineTo(lp.x, lp.y + r); ctx.lineTo(lp.x - r, lp.y); ctx.closePath(); ctx.stroke(); text(ctx, 'ガンナーがロック中', lp.x, lp.y - r - fs * 0.8, fs * 0.6, C.accent, 'center'); } }
     // where the gunner is aiming
     const gd = fwdOf(sh.yaw + st.gun.gy, sh.pitch + st.gun.gp), gp = R3.proj(add(sh.p, mul(gd, 700)));
     if (gp && (Math.abs(st.gun.gy) > 0.05 || Math.abs(st.gun.gp) > 0.05)) { ctx.strokeStyle = 'rgba(255,225,74,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(gp.x, gp.y, fs * 0.6, 0, TAU); ctx.moveTo(gp.x - fs, gp.y); ctx.lineTo(gp.x + fs, gp.y); ctx.moveTo(gp.x, gp.y - fs); ctx.lineTo(gp.x, gp.y + fs); ctx.stroke(); }
@@ -167,6 +170,11 @@
     ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(cx - 1.5, cy - 1.5, 3, 3);
     if (ctl.charge > 0) { ctx.strokeStyle = C.cyan; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, cr * 1.25, -Math.PI / 2, -Math.PI / 2 + TAU * ctl.charge / 1.2); ctx.stroke(); }
     if (ctl.scanT > 0) { ctx.strokeStyle = C.hp; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, cr * 1.5, -Math.PI / 2, -Math.PI / 2 + TAU * ctl.scanT / 1.2); ctx.stroke(); text(ctx, 'スキャン中…', cx, cy + cr * 1.7, fs * 0.8, C.hp, 'center'); }
+    const lk = ctl.lock && st.ents.get(ctl.lock);
+    if (lk && !lk.dead) {
+      const lp = R3.proj(lk.p);
+      if (lp) { const r = Math.max(cr * 1.3, lk.r * lp.k * 1.4), a = t * 2; ctx.strokeStyle = C.accent; ctx.lineWidth = 3; ctx.beginPath(); for (let i = 0; i < 4; i++) { const b = a + i * Math.PI / 2; ctx.moveTo(lp.x + Math.cos(b) * r, lp.y + Math.sin(b) * r); ctx.lineTo(lp.x + Math.cos(b + 0.5) * r, lp.y + Math.sin(b + 0.5) * r); } ctx.stroke(); text(ctx, 'LOCK', lp.x, lp.y - r - fs * 0.9, fs * 0.7, C.accent, 'center'); }
+    }
     if (tg && !tg.dead) {
       const known = Book.has('e', tg.type), d = tg.d;
       text(ctx, known ? d.jp : '？？？（Y長押しでスキャン）', cx, cy - cr * 2.6, fs * 0.85, known ? (d.cat === 'hostile' ? C.red : d.cat === 'friendly' ? C.hp : C.yel) : C.dim, 'center');
@@ -180,7 +188,7 @@
     text(ctx, 'ノヴァ', m, m + fs * 2.2, fs * 0.75, C.dim); bar(ctx, m + fs * 3, m + fs * 2.2 + 2, W * 0.38 - fs * 0.7, fs * 0.5, st.ult / 100, st.ult >= 100 ? (Math.floor(t * 6) % 2 ? '#ff8ad8' : '#ffe14a') : '#c69bff');
     const chip = st.mode === 'combat' ? '戦闘モード' : st.scan ? 'スキャン中：船は動けない' : '探索中';
     text(ctx, chip, m, m + fs * 3.3, fs * 0.75, st.mode === 'combat' ? C.red : st.scan ? C.cyan : C.hp);
-    text(ctx, G.tiltOn ? 'スマホをかたむけて向きを変える（船が曲がっても向きは変わらない）' : 'L1/R1：左右　L2/R2：上下　L1+R1：船の前へ', m + fs * (st.mode === 'combat' ? 5 : st.scan ? 11.5 : 3.2), m + fs * 3.35, fs * 0.6, C.dim);
+    text(ctx, ctl.lock ? 'ロックオン中：自動で追いかける（L1+R1 で解除）' : G.tiltOn ? 'かたむけて向きを変える　L1+R1：ロックオン' : 'L1/R1：左右　L2/R2：上下　L1+R1：ロックオン', m + fs * (st.mode === 'combat' ? 5 : st.scan ? 11.5 : 3.2), m + fs * 3.35, fs * 0.6, C.dim);
     if (st.scan && st.mode === 'combat') text(ctx, 'スキャン中で船は動けない！ 守って！', m, m + fs * 4.4, fs * 0.72, C.cyan);
     if (st.pow > 0) text(ctx, `攻撃力アップ ${Math.ceil(st.pow)}`, W - m, m, fs * 0.72, C.yel, 'right');
     // how far the gunner has turned from the ship's nose

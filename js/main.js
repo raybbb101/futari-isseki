@@ -223,12 +223,16 @@
         case 'noult': Sfx.play('fizzle'); FX3.toast('ノヴァのゲージがまだたまっていない', '#8b90b3', 1.4); break;
         case 'ult': break;
         case 'scanned': Sfx.play('scan'); break;
+        case 'lock': Sfx.play('tick'); FX3.toast(`ロックオン：${Book.has('e', m.type) ? DEFS[m.type].jp : '？？？'}（L1+R1 で解除）`, '#ffb547', 1.8); break;
+        case 'unlock': FX3.toast(m.lost ? 'ロックが外れた' : 'ロック解除', '#8b90b3', 1.2); break;
       }
     }
   }
   function onEvent(ev, st) {
     FX3.apply(ev, st, G.role);
     const k = ev[0];
+    // the gunner's shot hit something: lock on to it (if nothing is locked yet)
+    if (k === 'h' && G.role === 'gunner' && G.gunnerCtl.onHit(st, ev[1])) { const e = st.ents.get(ev[1]); Sfx.play('tick'); FX3.toast(`ロックオン：${e && Book.has('e', e.type) ? e.d.jp : '？？？'}`, '#ffb547', 1.6); }
     if (k === 'book') {
       const fresh = Book.unlock(ev[1], ev[2]);
       const name = ev[1] === 'e' ? DEFS[ev[2]].jp : PLANETS[ev[2]].name;
