@@ -8,8 +8,9 @@
 
   // ---------- high-res volume: same API as v1, coordinates stay in model units ----------
   class VolK extends Vol {
-    constructor(w, h, d) { super(w * K, h * K, d * K); this.K = K; }
+    constructor(w, h, d, k = K) { super(w * k, h * k, d * k); this.K = k; }
     region(bb, test, mat) {
+      const K = this.K;
       const x0 = Math.max(0, Math.floor(bb[0] * K)), x1 = Math.min(this.w - 1, Math.ceil(bb[1] * K));
       const y0 = Math.max(0, Math.floor(bb[2] * K)), y1 = Math.min(this.h - 1, Math.ceil(bb[3] * K));
       const z0 = Math.max(0, Math.floor(bb[4] * K)), z1 = Math.min(this.d - 1, Math.ceil(bb[5] * K));
@@ -20,8 +21,9 @@
         if (m !== undefined) this.m[this.idx(x, y, z)] = m ? MID[m] : 0;
       }
     }
-    all(test, mat) { this.region([0, this.w / K, 0, this.h / K, 0, this.d / K], test, mat); }
+    all(test, mat) { const K = this.K; this.region([0, this.w / K, 0, this.h / K, 0, this.d / K], test, mat); }
     paint(test, mat) {
+      const K = this.K;
       for (let z = 0; z < this.d; z++) for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
         const i = this.idx(x, y, z); if (!this.m[i]) continue;
         const px = (x + 0.5) / K, py = (y + 0.5) / K, pz = (z + 0.5) / K;
@@ -31,6 +33,7 @@
       }
     }
     put(x, y, z, mat) {
+      const K = this.K;
       const bx = Math.floor(x) * K, by = Math.floor(y) * K, bz = Math.floor(z) * K, v = mat ? MID[mat] : 0;
       for (let k = 0; k < K; k++) for (let j = 0; j < K; j++) for (let i = 0; i < K; i++)
         if (this.inb(bx + i, by + j, bz + k)) this.m[this.idx(bx + i, by + j, bz + k)] = v;
@@ -242,13 +245,15 @@
     return { w, h, d, slices, glows, count, hasGlow };
   }
 
+  // finer voxels for the ship and the fighters you see up close most often
+  const KS = { ship: 3, raider: 3, raider_g: 3, interceptor: 3 };
   const FRAMES = { ship: 12, raider: 6, drone: 12, mine: 8, turret: 12, boss: 8, jelly: 12, station: 12, gate: 12, capsule: 12 };
   const FPS = { station: 4 };
   const MODELS = M1.map(m => {
     const n = Object.assign({}, m);
     delete n.frames; delete n.art; delete n.gart;
-    n.lit = true; n.K = K; n.mw = m.w; n.mh = m.h; n.md = m.d;
-    n.w = m.w * K; n.h = m.h * K; n.d = m.d * K; n.diag = Math.hypot(n.w, n.h);
+    n.lit = true; n.K = KS[m.id] || K; n.mw = m.w; n.mh = m.h; n.md = m.d;
+    n.w = m.w * n.K; n.h = m.h * n.K; n.d = m.d * n.K; n.diag = Math.hypot(n.w, n.h);
     n.F = FRAMES[m.id] || 1; n.fps = FPS[m.id] || m.fps;
     return n;
   });
@@ -256,7 +261,7 @@
     const base = M1.find(m => m.id === n.id);
     n.frames = [];
     for (let f = 0; f < n.F; f++) {
-      const V = new VolK(n.mw, n.mh, n.md);
+      const V = new VolK(n.mw, n.mh, n.md, n.K);
       base.build(V, f, n.F);
       const det = DETAIL[n.id] || DETAIL[base.baseId];
       if (det) det(V, f, n.F);

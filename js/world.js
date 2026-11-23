@@ -3,12 +3,12 @@
 // The host runs World (enemies, damage, scans). The guest runs Replica. Each player's own controls
 // run on their own phone: the pilot moves the ship, the gunner aims and fires.
 (function () {
-  const TAU = Math.PI * 2, WS = 24000, HW = WS / 2, MAXHP = 20, SHIP_R = 13;
+  const TAU = Math.PI * 2, WS = 90000, HW = WS / 2, MAXHP = 20, SHIP_R = 13;
   const wd = d => { d = (d + HW) % WS; if (d < 0) d += WS; return d - HW; };
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   const wrapA = a => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; };
   const sub = (a, b) => [wd(a[0] - b[0]), wd(a[1] - b[1]), wd(a[2] - b[2])];
-  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], vadd = add;
   const mul = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
   const len = v => Math.hypot(v[0], v[1], v[2]);
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -70,17 +70,28 @@
 
   // ---------- planets (real, with gravity) ----------
   const PLANETS = [
-    { m: 'earth', mr: 13, name: 'アクア・ノヴァ', R: 900, p: [3200, 2000, 500], g: 380, type: '海の惑星', age: '約38億年', temp: '平均 14℃', atm: '窒素と酸素（少しうすい）', grav: '0.9G', live: 4, desc: '青い海と緑の大陸があり、雲も流れている。住めるかもしれない第一候補。' },
-    { m: 'moon', mr: 11, name: 'セレネ', R: 420, p: [4500, 3300, 1200], g: 300, type: '衛星（月）', age: '約44億年', temp: '−120〜110℃', atm: 'ほとんどない', grav: '0.17G', live: 1, desc: 'クレーターだらけの月。アクア・ノヴァのまわりを回っている。' },
-    { m: 'lava', mr: 12, name: 'イグニス', R: 700, p: [-6000, 4200, -1500], g: 400, type: '溶岩の惑星', age: '約9億年（まだ若い）', temp: '地表 1100℃', atm: '二酸化硫黄', grav: '1.3G', live: 0, desc: 'まだ若く、地面のすきまから溶岩があふれている。近くに海賊の旗艦がいるといううわさ。' },
-    { m: 'ice', mr: 12, name: 'グラシア', R: 800, p: [7200, -6500, 2000], g: 360, type: '氷の惑星', age: '約61億年', temp: '平均 −160℃', atm: 'メタン（うすい）', grav: '0.8G', live: 2, desc: '表面は厚い氷。氷の下には海があるかもしれない。' },
-    { m: 'gas', mr: 15, name: 'ゼフィール', R: 1500, p: [-8000, -7000, -3000], g: 520, type: 'ガス巨星', age: '約46億年', temp: '雲の上 −110℃', atm: '水素とヘリウム', grav: '2.4G', live: 0, desc: 'とても大きなガスの星。赤い嵐は何百年も続いている。地面はない。' },
-    { m: 'violet', mr: 10, name: 'ヴィオラ', R: 700, p: [-2500, -8500, 4500], g: 380, type: '結晶の環をもつ惑星', age: '約27億年', temp: '平均 −20℃', atm: 'アルゴンと窒素', grav: '1.1G', live: 3, desc: '細い結晶の環が光る。ふしぎな電波がずっと出ている。' },
-    { m: 'desert', mr: 10, name: 'デューナ', R: 650, p: [9000, 6000, -4000], g: 330, type: '砂の惑星', age: '約52億年', temp: '昼 70℃／夜 −40℃', atm: '二酸化炭素（うすい）', grav: '0.7G', live: 2, desc: '砂丘がどこまでも続く。昔は海があったらしい。' },
-    { m: 'planet', mr: 12, name: 'オルビス', R: 1000, p: [-10000, 1500, 2500], g: 420, type: '環のある惑星', age: '約71億年', temp: '平均 −60℃', atm: '水素とメタン', grav: '1.6G', live: 1, desc: '大きな環がななめに回る。環は氷と岩のつぶでできている。' },
+    { m: 'earth', mr: 13, name: 'アクア・ノヴァ', R: 900, a: 5900, per: 1800, ph: 0.9, inc: 0.02, spin: 0.03, tilt: 0.41, p: [0, 0, 0], v: [0, 0, 0], g: 380, type: '海の惑星', age: '約38億年', temp: '平均 14℃', atm: '窒素と酸素（少しうすい）', grav: '0.9G', live: 4, desc: '青い海と緑の大陸があり、雲も流れている。住めるかもしれない第一候補。' },
+    { m: 'moon', mr: 11, name: 'セレネ', R: 420, a: 1500, per: 300, ph: 2.0, inc: 0.08, parent: 0, spin: 0.012, tilt: 0.1, p: [0, 0, 0], v: [0, 0, 0], g: 300, type: '衛星（月）', age: '約44億年', temp: '−120〜110℃', atm: 'ほとんどない', grav: '0.17G', live: 1, desc: 'クレーターだらけの月。アクア・ノヴァのまわりを回っている。' },
+    { m: 'lava', mr: 12, name: 'イグニス', R: 700, a: 2600, per: 720, ph: 3.6, inc: 0.03, spin: 0.05, tilt: 0.1, p: [0, 0, 0], v: [0, 0, 0], g: 400, type: '溶岩の惑星', age: '約9億年（まだ若い）', temp: '地表 1100℃', atm: '二酸化硫黄', grav: '1.3G', live: 0, desc: 'まだ若く、地面のすきまから溶岩があふれている。近くに海賊の旗艦がいるといううわさ。' },
+    { m: 'ice', mr: 12, name: 'グラシア', R: 800, a: 15600, per: 6000, ph: 5.2, inc: 0.04, spin: 0.02, tilt: 0.25, p: [0, 0, 0], v: [0, 0, 0], g: 360, type: '氷の惑星', age: '約61億年', temp: '平均 −160℃', atm: 'メタン（うすい）', grav: '0.8G', live: 2, desc: '表面は厚い氷。氷の下には海があるかもしれない。' },
+    { m: 'gas', mr: 15, name: 'ゼフィール', R: 1500, a: 18400, per: 8400, ph: 4.1, inc: 0.01, spin: 0.06, tilt: 0.05, p: [0, 0, 0], v: [0, 0, 0], g: 520, type: 'ガス巨星', age: '約46億年', temp: '雲の上 −110℃', atm: '水素とヘリウム', grav: '2.4G', live: 0, desc: 'とても大きなガスの星。赤い嵐は何百年も続いている。地面はない。' },
+    { m: 'violet', mr: 10, name: 'ヴィオラ', R: 700, a: 11600, per: 3600, ph: 1.7, inc: 0.05, spin: 0.035, tilt: -0.3, p: [0, 0, 0], v: [0, 0, 0], g: 380, type: '結晶の環をもつ惑星', age: '約27億年', temp: '平均 −20℃', atm: 'アルゴンと窒素', grav: '1.1G', live: 3, desc: '細い結晶の環が光る。ふしぎな電波がずっと出ている。' },
+    { m: 'desert', mr: 10, name: 'デューナ', R: 650, a: 9400, per: 2700, ph: 0.2, inc: 0.03, spin: 0.015, tilt: 0.3, p: [0, 0, 0], v: [0, 0, 0], g: 330, type: '砂の惑星', age: '約52億年', temp: '昼 70℃／夜 −40℃', atm: '二酸化炭素（うすい）', grav: '0.7G', live: 2, desc: '砂丘がどこまでも続く。昔は海があったらしい。' },
+    { m: 'planet', mr: 12, name: 'オルビス', R: 1000, a: 13600, per: 4800, ph: 2.6, inc: 0.02, spin: 0.045, tilt: 0.45, p: [0, 0, 0], v: [0, 0, 0], g: 420, type: '環のある惑星', age: '約71億年', temp: '平均 −60℃', atm: '水素とメタン', grav: '1.6G', live: 1, desc: '大きな環がななめに回る。環は氷と岩のつぶでできている。' },
   ];
   const scanDur = pl => Math.round(30 + pl.R / 60);
-  const STATION = [0, 0, 0];
+  // the sun sits at the centre; planets go round it (the moon goes round アクア・ノヴァ) and spin on their axes
+  const SUN = { name: '太陽', R: 1400, g: 300, p: [0, 0, 0], v: [0, 0, 0], sun: true };
+  function updatePlanets(T) {
+    for (const pl of PLANETS) {
+      const c = pl.parent != null ? PLANETS[pl.parent] : SUN, w = TAU / pl.per, a = pl.ph + w * T;
+      pl.p = [c.p[0] + Math.cos(a) * pl.a, c.p[1] + Math.sin(a) * pl.a, c.p[2] + Math.sin(a) * pl.a * pl.inc];
+      pl.v = [c.v[0] - Math.sin(a) * pl.a * w, c.v[1] + Math.cos(a) * pl.a * w, c.v[2] + Math.cos(a) * pl.a * w * pl.inc];
+    }
+  }
+  updatePlanets(0);
+  const BODIES = [...PLANETS, SUN];
+  const STATION = [3000, 0, 2600];
 
   // ---------- world generation (same on both phones, from the shared seed) ----------
   function makeEnt(type, p, id, o, rng) {
@@ -93,16 +104,26 @@
       g: o.g || 0, still: !!d.still, temp: !!o.temp, seen: 0,
     };
   }
-  function farFromPlanets(p, margin) { for (const pl of PLANETS) if (len(sub(p, pl.p)) < pl.R * 1.8 + margin) return false; return len(sub(p, STATION)) > 1800 + margin; }
+  // keep fields away from the planets' orbit lanes, the sun and the station
+  function farFromPlanets(p, margin) {
+    if (len(p) < SUN.R * 2.5 + margin) return false;
+    const dxy = Math.hypot(p[0], p[1]);
+    for (const pl of PLANETS) {
+      if (pl.parent != null) continue;
+      const moon = PLANETS.find(q => q.parent === PLANETS.indexOf(pl)), w = pl.R * 1.8 + margin + (moon ? moon.a + moon.R * 1.8 : 0);
+      if (Math.abs(dxy - pl.a) < w && Math.abs(p[2]) < w) return false;
+    }
+    return len(sub(p, STATION)) > 1800 + margin;
+  }
   function generate(seed) {
     const r = rngOf(seed), list = []; let id = 1, gid = 1;
     const add = (type, p, o = {}) => { const e = makeEnt(type, p, id++, o, r); list.push(e); return e; };
-    const rp = () => [(r() * 2 - 1) * HW, (r() * 2 - 1) * HW, (r() * 2 - 1) * HW * 0.6];
+    const rp = () => { const a = r() * TAU, d = 2500 + Math.sqrt(r()) * 19000; return [Math.cos(a) * d, Math.sin(a) * d, (r() * 2 - 1) * 4000]; };
     const spot = m => { for (let i = 0; i < 60; i++) { const p = rp(); if (farFromPlanets(p, m)) return p; } return rp(); };
     const around = (c, rad) => { const u = r() * TAU, v = r() * 2 - 1, q = Math.sqrt(1 - v * v), d = rad * Math.cbrt(r()); return [c[0] + Math.cos(u) * q * d, c[1] + Math.sin(u) * q * d, c[2] + v * d * 0.6]; };
     add('station', STATION, { yaw: 0 });
-    for (let k = 0; k < 3; k++) add('cargo', around([500, 300, 0], 400));
-    add('satellite', [-700, 500, 200]);
+    for (let k = 0; k < 3; k++) add('cargo', around(vadd(STATION, [500, 300, 0]), 400));
+    add('satellite', vadd(STATION, [-700, 500, 200]));
     for (let f = 0; f < 16; f++) {
       const c = spot(1200), n = 14 + Math.floor(r() * 16);
       for (let i = 0; i < n; i++) add(r() < 0.88 ? 'asteroid' : 'crystal', around(c, 1000));
@@ -118,10 +139,10 @@
       const c = spot(1500), sq = SQUADS[k % SQUADS.length], g = gid++;
       for (const t of sq) add(t, around(c, 250), { g });
     }
-    const lava = PLANETS[2].p; add('dread', [lava[0] + 2600, lava[1] - 600, lava[2] + 300], { g: gid++ });
+    add('dread', [-3000, -2000, 1900], { g: gid++ });
     const FRIENDS = [[['whale', 'manta', 'manta'], 3], [['manta', 'manta', 'manta', 'manta', 'manta'], 4], [['jelly_b', 'jelly_b', 'jelly_b', 'jelly_b'], 4], [['spore', 'spore', 'spore', 'spore', 'spore'], 5], [['probe'], 6], [['trader'], 3]];
     for (const [sq, n] of FRIENDS) for (let k = 0; k < n; k++) { const c = spot(600), g = gid++; for (const t of sq) add(t, around(c, 300), { g }); }
-    add('whale', [1500, -1200, 400], { g: gid++ }); add('manta', [1300, -1000, 300], { g: gid }); add('manta', [1400, -900, 500], { g: gid++ });
+    add('whale', [STATION[0] - 1500, STATION[1] - 1200, STATION[2] + 400], { g: gid++ }); add('manta', [STATION[0] - 1300, STATION[1] - 1000, STATION[2] + 300], { g: gid }); add('manta', [STATION[0] - 1400, STATION[1] - 900, STATION[2] + 500], { g: gid++ });
     return { list, nextId: id, nextG: gid };
   }
 
@@ -130,7 +151,7 @@
     constructor(seed, opt = {}) {
       this.seed = seed; this.rng = rngOf(seed ^ 0x5bd1e995); this.T = 0;
       const g = generate(seed); this.ents = new Map(g.list.map(e => [e.id, e])); this.nid = 100000; this.gid = g.nextG + 1000;
-      this.ship = { p: [320, -40, 60], v: [0, 0, 0], yaw: 0, pitch: 0, roll: 0, flags: 0 };
+      this.ship = { p: add(STATION, [320, -40, 60]), v: [0, 0, 0], yaw: 0, pitch: 0, roll: 0, flags: 0 };
       this.gun = { gy: 0, gp: 0 };
       this.hp = MAXHP; this.en = 100; this.ult = 0; this.pow = 0; this.inv = 0;
       this.mode = 'explore'; this.combatT = 0; this.scan = null;
@@ -148,8 +169,9 @@
     step(dt) {
       if (this.paused || this.over) return;
       this.T += dt; this.stats.time = this.T;
+      updatePlanets(this.T);
       const sh = this.ship;
-      for (const pl of PLANETS) if (len(sub(sh.p, pl.p)) < pl.R * 0.95) { this.finish('crash', pl.name); return; }
+      for (const pl of BODIES) if (len(sub(sh.p, pl.p)) < pl.R * 0.95) { this.finish(pl.sun ? 'sun' : 'crash', pl.name); return; }
       const f = sh.flags; let drain = 0; if (f & F.SHIELD) drain += 28; if (f & F.BOOST) drain += 20;
       this.en = drain ? Math.max(0, this.en - drain * dt) : Math.min(100, this.en + 10 * dt);
       this.pow = Math.max(0, this.pow - dt); this.inv = Math.max(0, this.inv - dt);
@@ -228,7 +250,12 @@
       this.face(e, dt);
     }
     face(e, dt) { const s = len(e.v); if (s < 4) return; const y = Math.atan2(e.v[1], e.v[0]), p = Math.asin(clamp(e.v[2] / s, -1, 1)); e.yaw += wrapA(y - e.yaw) * Math.min(1, dt * 3); e.pitch += (p * 0.6 - e.pitch) * Math.min(1, dt * 3); }
-    wander(e, dt, rad = 300, k = 0.35) { const T = this.T * 0.12 + e.ph; this.steer(e, add(e.home, [Math.cos(T) * rad, Math.sin(T * 1.3) * rad, Math.sin(T * 0.7) * rad * 0.4]), e.d.sp * k, dt, 0.8); }
+    wander(e, dt, rad = 300, k = 0.35) {
+      const T = this.T * 0.12 + e.ph;
+      let h = e.home;
+      if (e.d.sp > 0) { const q = this.T * 0.018 + (e.g || e.id) * 1.7; h = add(h, [Math.cos(q) * 2600, Math.sin(q * 0.8) * 2600, Math.sin(q * 0.6) * 900]); }
+      this.steer(e, add(h, [Math.cos(T) * rad, Math.sin(T * 1.3) * rad, Math.sin(T * 0.7) * rad * 0.4]), e.d.sp * k, dt, 0.8);
+    }
     flee(e, dt, k = 1.6) { const sh = this.ship; e.v = add(e.v, mul(sub3(mul(norm(sub(e.p, sh.p)), e.d.sp * k), e.v), Math.min(1, dt * 1.5))); this.face(e, dt); }
     shootAt(e, dt, speed, n = 1, spread = 0) {
       e.sT -= dt; if (e.sT > 0) return;
@@ -255,8 +282,8 @@
             const off = [Math.cos(e.orb + e.ph) * 380, Math.sin(e.orb + e.ph) * 380, Math.sin(e.orb * 0.7 + e.ph) * 160];
             this.steer(e, add(sh.p, off), sp, dt, 2.2);
             if (dS < 1200) this.shootAt(e, dt, 560);
-          } else if (e.st === 'return') { this.steer(e, e.home, sp * 0.6, dt); if (len(sub(e.home, e.p)) < 200) e.st = 'idle'; }
-          else this.wander(e, dt);
+          } else if (e.st === 'return') { this.steer(e, e.home, sp * 0.6, dt); if (len(sub(e.home, e.p)) < 2800) e.st = 'idle'; }
+          else this.wander(e, dt, 300, 0.6);
           break;
         case 'gunship': case 'dread': {
           const far = d.ai === 'dread' ? 900 : 650;
@@ -266,15 +293,15 @@
             this.steer(e, sub3(sh.p, mul(norm(to), far)), sp, dt, 0.8);
             if (dS < 1500) this.shootAt(e, dt, 460, d.ai === 'dread' ? 5 : 3, 0.12);
             if (d.ai === 'dread') { e.call = (e.call || 10) - dt; if (e.call <= 0) { e.call = 14; this.spawnGroup(['raider', 'raider'], e.p, 'attack'); this.say('ドレッドがレイダーを出した！', 2.5); } }
-          } else if (e.st === 'return') { this.steer(e, e.home, sp * 0.6, dt); if (len(sub(e.home, e.p)) < 300) e.st = 'idle'; }
+          } else if (e.st === 'return') { this.steer(e, e.home, sp * 0.6, dt); if (len(sub(e.home, e.p)) < 2800) e.st = 'idle'; }
           else this.wander(e, dt, 200, 0.3);
           break;
         }
         case 'drone':
           if (e.st !== 'attack' && dS < 1000) this.aggro(e);
           if (e.st === 'attack') { if (dS > 2400) { e.st = 'return'; break; } const off = [Math.cos(this.T * 0.4 + e.ph) * 500, Math.sin(this.T * 0.4 + e.ph) * 500, Math.sin(this.T * 0.3 + e.ph) * 200]; this.steer(e, add(sh.p, off), sp, dt, 1.2); if (dS < 1100) this.shootAt(e, dt, 480); }
-          else if (e.st === 'return') { this.steer(e, e.home, sp * 0.6, dt); if (len(sub(e.home, e.p)) < 200) e.st = 'idle'; }
-          else this.wander(e, dt, 150, 0.3);
+          else if (e.st === 'return') { this.steer(e, e.home, sp * 0.6, dt); if (len(sub(e.home, e.p)) < 2800) e.st = 'idle'; }
+          else this.wander(e, dt, 200, 0.5);
           break;
         case 'turret':
           if (dS < 1100) { e.st = 'attack'; e.yaw = Math.atan2(to[1], to[0]); this.shootAt(e, dt, 500, 3, 0.05); } else e.st = 'idle';
@@ -455,7 +482,7 @@
     constructor(seed) {
       const g = generate(seed), r = rngOf(1);
       this.ents = new Map(g.list.map(e => [e.id, e])); this.rng = r;
-      this.T = 0; this.ship = { p: [320, -40, 60], v: [0, 0, 0], yaw: 0, pitch: 0, roll: 0, flags: 0 }; this.shipT = null;
+      this.T = 0; this.ship = { p: add(STATION, [320, -40, 60]), v: [0, 0, 0], yaw: 0, pitch: 0, roll: 0, flags: 0 }; this.shipT = null;
       this.gun = { gy: 0, gp: 0 }; this.gunT = null;
       this.hp = MAXHP; this.en = 100; this.ult = 0; this.pow = 0; this.mode = 'explore'; this.scan = null;
       this.shots = new Map(); this.bul = new Map(); this.clouds = []; this.paused = false; this.over = false; this.lastSnap = 0; this.rep = true;
@@ -489,7 +516,7 @@
     }
     step(dt) {
       if (this.paused || this.over) return;
-      this.T += dt;
+      this.T += dt; updatePlanets(this.T);
       for (const e of this.ents.values()) {
         if (e.still) continue;
         if (!e.tp) continue;
@@ -525,14 +552,15 @@
       const scanning = !!st.scan;
       let ev = null;
       const yr = -(inp.rx || 0) * 1.7 - (inp.tl || 0) * 2.4;
-      const pr = -(inp.ry || 0) * (inp.invert ? -1 : 1) * 1.3 - (inp.tp || 0) * 2.0;
+      const pr = -(inp.ry || 0) * (inp.invert ? -1 : 1) * 1.3 + (inp.tp || 0) * 1.8;
       if (!scanning) { sh.yaw = wrapA(sh.yaw + yr * dt); sh.pitch = clamp(sh.pitch + pr * dt, -1.35, 1.35); }
       const B = basis(sh.yaw, sh.pitch), en = st.en > 1;
       const boost = !!inp.boost && en && !scanning, shield = !!inp.shield && en;
       let acc = [0, 0, 0];
       if (!scanning) acc = add(add(mul(B.f, -(inp.ly || 0) * 260 + (boost ? 620 : 0)), mul(B.r, (inp.lx || 0) * 220)), mul(B.u, (inp.up || 0) * 220));
       this.gmax = 0; this.gdir = null;
-      if (!scanning) for (const pl of PLANETS) {
+      const docked = len(sub(sh.p, STATION)) < 650;
+      if (!scanning && !docked) for (const pl of BODIES) {
         const d = sub(pl.p, sh.p), r = len(d);
         if (r < pl.R * 6) { const g = pl.g * (pl.R / r) ** 2; acc = add(acc, mul(d, g / r)); if (g > this.gmax) { this.gmax = g; this.gdir = mul(d, 1 / r); } }
       }
@@ -543,6 +571,7 @@
       if (inp.dodge && this.cd <= 0 && !scanning) { this.rollDir = (inp.lx || 0) < -0.2 ? -1 : 1; sh.v = add(sh.v, mul(B.r, this.rollDir * 430)); this.dodgeT = 0.5; this.cd = 1.1; ev = 'dodge'; }
       this.dodgeT -= dt;
       sh.p = wrapP(add(sh.p, mul(sh.v, dt)));
+      if (scanning && PLANETS[st.scan.pi]) sh.p = wrapP(add(sh.p, mul(PLANETS[st.scan.pi].v, dt)));
       for (const e of st.ents.values()) {
         if (e.dead || (!e.still && !e.d.dmg && e.r < 60)) continue;
         const dd = sub(sh.p, e.p), R = e.r + SHIP_R;
@@ -580,12 +609,13 @@
       const out = [];
       for (const k in this.cds) this.cds[k] = Math.max(0, this.cds[k] - dt);
       if (st.paused || st.over) return out;
-      const free = st.mode === 'combat';
+      if (inp.l1 && inp.r1) { this.gy += wrapA(0 - this.gy) * Math.min(1, dt * 6); this.gp += (0 - this.gp) * Math.min(1, dt * 6); inp = Object.assign({}, inp, { l1: false, r1: false }); this.homing = true; }
+      const free = true;
       if (inp.aim) { this.gy += wrapA(inp.aim.gy - this.gy) * Math.min(1, dt * 5); this.gp += (inp.aim.gp - this.gp) * Math.min(1, dt * 5); }
       else if (free) {
         const yr = ((inp.l1 ? 1 : 0) - (inp.r1 ? 1 : 0)) * 1.8 - (inp.tl || 0) * 2.6;
         this.gy = wrapA(this.gy + yr * dt);
-        if (inp.tilt) this.gp += (clamp(-(inp.tp || 0) * 1.5, -1.25, 1.25) - this.gp) * Math.min(1, dt * 6);
+        if (inp.tilt) this.gp += (clamp((inp.tp || 0) * 1.5, -1.25, 1.25) - this.gp) * Math.min(1, dt * 6);
         else this.gp = clamp(this.gp + ((inp.l2 ? 1 : 0) - (inp.r2 ? 1 : 0)) * 1.3 * dt, -1.25, 1.25);
       } else { this.gy += wrapA(0 - this.gy) * Math.min(1, dt * 3); this.gp += (0 - this.gp) * Math.min(1, dt * 3); }
       st.gun.gy = this.gy; st.gun.gp = this.gp;
@@ -651,7 +681,7 @@
     }
     // go around planets that are in the way
     const wd0 = norm(want), wl = len(want);
-    for (const p2 of PLANETS) {
+    for (const p2 of BODIES) {
       if (p2 === pl) continue;
       const rel = sub(p2.p, sh.p), t = dot(rel, wd0); if (t < 0 || t > wl) continue;
       const off = sub3(mul(wd0, t), rel), c = len(off);
@@ -659,8 +689,15 @@
     }
     const B = basis(sh.yaw, sh.pitch);
     // keep out of strong gravity: thrust straight away from the planet, even before turning
-    const np = nearestPlanet(sh.p);
-    if (np && np.d < np.pl.R * (np.pl === pl ? 1.6 : 1.9)) {
+    let np = nearestPlanet(sh.p); const ds = len(sub(sh.p, SUN.p));
+    if (ds < SUN.R * 2.2) np = { pl: SUN, d: ds };
+    // look ahead along our motion: if a (moving) planet will come too close, treat it as danger now
+    for (const b of BODIES) {
+      const rel = sub(b.p, sh.p), rv = sub3(sh.v, b.v), v2 = dot(rv, rv); if (v2 < 100) continue;
+      const t = dot(rel, rv) / v2; if (t < 0 || t > 4) continue;
+      if (len(sub3(rel, mul(rv, t))) < b.R * 1.9 && (b !== pl || len(rel) < b.R * 2.6)) { np = { pl: b, d: Math.min(len(rel), b.R * 1.8) }; inp.brake = true; break; }
+    }
+    if (np && np.d < np.pl.R * (np.pl === pl ? 1.6 : 1.9) || np.pl === SUN) {
       const awayP = norm(sub(sh.p, np.pl.p)); want = awayP; inp.boost = true;
       inp.ly = -dot(awayP, B.f); inp.lx = dot(awayP, B.r); inp.up = dot(awayP, B.u);
       const wy = Math.atan2(want[1], want[0]), wp = Math.asin(clamp(want[2], -1, 1));
@@ -685,7 +722,7 @@
 
   window.W3 = {
     TAU, WS, HW, MAXHP, SHIP_R, F, wd, sub, add, mul, len, dot, norm, cross, basis, fwdOf, wrapP, wrapA, clamp,
-    SKILLS, ULT, KIND_JP, DEFS, BOOK_ORDER, CAT_JP, PLANETS, STATION, scanDur, nearestPlanet,
+    SKILLS, ULT, KIND_JP, DEFS, BOOK_ORDER, CAT_JP, PLANETS, SUN, BODIES, updatePlanets, STATION, scanDur, nearestPlanet,
     World, Replica, PilotCtl, GunnerCtl, botGunnerInput, botPilotInput, rngOf, generate,
   };
 })();

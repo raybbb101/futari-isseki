@@ -72,7 +72,7 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
 #bkList { list-style: none; margin: 0; padding: 0; overflow: auto; border: 2px solid var(--line); }
 #bkList li { padding: 4px 8px; cursor: pointer; font-size: clamp(13px, 2.6vmin, 16px); border-left: 4px solid transparent; }
 #bkList li.cur { background: rgba(255,181,71,0.16); border-left-color: var(--accent); }
-#bkList li.c-hostile { color: #ff9aa8; } #bkList li.c-friendly { color: #9cffae; } #bkList li.c-neutral { color: #ffe68a; } #bkList li.c-object { color: var(--dim); } #bkList li.c-planet { color: var(--cyan); }
+#bkList li.c-hostile { color: #ff9aa8; } #bkList li.c-friendly { color: #9cffae; } #bkList li.c-neutral { color: #ffe68a; } #bkList li.c-object { color: var(--dim); } #bkList li.c-planet { color: var(--cyan); } #bkList li.c-skill { color: #ffe68a; } #bkDetail .combo { font-size: 1.3em; color: var(--accent); }
 #bkDetail { overflow: auto; font-size: clamp(13px, 2.5vmin, 15px); line-height: 1.6; padding-right: 4px; }
 #bkDetail h3 { margin: 0 0 6px; font-weight: 400; font-size: clamp(18px, 3.6vmin, 22px); }
 #bkDetail h4 { margin: 10px 0 4px; font-weight: 400; color: var(--cyan); }
@@ -148,13 +148,13 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
       <div><h3>パイロット（コントローラー）</h3><dl>
         <dt>左スティック</dt><dd>前後・左右に移動</dd><dt>右スティック</dt><dd>向きを変える（上下左右）</dd><dt>RB／LB</dt><dd>上へ／下へ</dd>
         <dt>RT</dt><dd>全力加速（引力から脱出できる）</dd><dt>LT</dt><dd>ブレーキ</dd><dt>A</dt><dd>回避ロール</dd><dt>B</dt><dd>シールド</dd>
-        <dt>X</dt><dd>惑星スキャン（近くで）／中止</dd><dt>Y</dt><dd>視点（船のうしろ ⇄ コックピット）</dd><dt>SELECT</dt><dd>図鑑</dd><dt>L3</dt><dd>チルトの中心合わせ</dd></dl></div>
+        <dt>X</dt><dd>惑星スキャン（近くで）／中止</dd><dt>Y</dt><dd>視点（船のうしろ ⇄ コックピット）</dd><dt>SELECT</dt><dd>図鑑</dd><dt>チルト</dt><dd>スマホを左右にかたむけて旋回、手前に起こすと上・向こうへ倒すと下（縦にまっすぐが中心）</dd></dl></div>
       <div><h3>ガンナー（ポケットタコ）</h3><dl>
         <dt>A 長押し</dt><dd>機関砲</dd><dt>B ためて離す</dt><dd>チャージビーム（中心に近いほど強い）</dd><dt>十字 → X</dt><dd>スキル（コンボは画面と図鑑に）</dd>
         <dt>↑→↓← → Y</dt><dd>必殺技ノヴァ（ゲージ満タン）</dd><dt>Y 長押し</dt><dd>照準の中の相手をスキャン</dd>
-        <dt>L1／R1</dt><dd>左／右を向く（戦闘モード）</dd><dt>L2／R2</dt><dd>上／下を向く（戦闘モード）</dd><dt>SELECT</dt><dd>図鑑</dd></dl></div>
+        <dt>L1／R1</dt><dd>左／右を向く</dd><dt>L2／R2</dt><dd>上／下を向く</dd><dt>L1＋R1</dt><dd>船の前にもどす</dd><dt>SELECT</dt><dd>図鑑（スキルのコンボもここ）</dd><dt>チルト</dt><dd>左右にかたむけると回り続け、手前に起こすと上・向こうへ倒すと下を見る</dd></dl></div>
     </div>
-    <p class="hint">ふだんはガンナーもパイロットと同じ前を見ています。敵がおそってくると「戦闘モード」になり、ガンナーは自分で向きを変えて自由にねらえます（チルトをオンにするとスマホをかたむけて回れます）。惑星の近くは引力に注意。スキャン中は船が動けないので、敵が来たらガンナーが守ります。<br>キーボード：矢印=十字／左スティック　IJKL=右スティック　X=A Z=B S=X A=Y Q=L1 R=R1 W=L2 E=R2 Enter=START Shift=SELECT</p>
+    <p class="hint">ガンナーはいつでも自分で見る向きを変えられます（船じゅうの砲台から360度ねらえる）。宇宙の真ん中には太陽があり、惑星はそのまわりを回りながら自転しています。惑星の近くは引力に注意。スキャン中は船が動けないので、敵が来たらガンナーが守ります。<br>キーボード：矢印=十字／左スティック　IJKL=右スティック　X=A Z=B S=X A=Y Q=L1 R=R1 W=L2 E=R2 Enter=START Shift=SELECT</p>
     <nav><button data-back>もどる</button></nav>
   </section>
 
@@ -173,7 +173,7 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
   </section>
 
   <section class="screen book" id="s-book" hidden>
-    <div class="bk-tabs"><span id="bkTabE" class="on">敵・生きもの</span><span id="bkTabP">惑星</span><span class="sp"></span><button id="bkClose">とじる（B）</button></div>
+    <div class="bk-tabs"><span id="bkTabE" class="on">敵・生きもの</span><span id="bkTabP">惑星</span><span id="bkTabS">スキル</span><span class="sp"></span><button id="bkClose">とじる（B）</button></div>
     <div class="bk-body"><ul id="bkList"></ul><div id="bkDetail"></div></div>
     <p class="hint">↑↓ でえらぶ　←→ でページ　B／SELECT でとじる</p>
   </section>
@@ -196,6 +196,7 @@ button.focus::before { content: "▶ "; position: absolute; margin-left: -1.6em;
 <script src="js/world.js"></script>
 <script src="js/fx3.js"></script>
 <script src="js/render3d.js"></script>
+<script src="js/planet3d.js"></script>
 <script src="js/book.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/main.js"></script>

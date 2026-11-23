@@ -1,8 +1,8 @@
 // Offline support: every game file is saved on first visit, so solo play works with no signal.
-const VERSION = 'futari-v2';
+const VERSION = 'futari-v3';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
-  'js/models.js', 'js/models2.js', 'js/stack.js', 'js/input.js', 'js/tilt.js', 'js/net.js', 'js/world.js', 'js/fx3.js', 'js/render3d.js', 'js/book.js', 'js/hud.js', 'js/main.js',
+  'js/models.js', 'js/models2.js', 'js/stack.js', 'js/input.js', 'js/tilt.js', 'js/net.js', 'js/world.js', 'js/fx3.js', 'js/render3d.js', 'js/planet3d.js', 'js/book.js', 'js/hud.js', 'js/main.js',
 ];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

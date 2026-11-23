@@ -178,29 +178,39 @@
     text(ctx, '船体', m, m, fs * 0.75, C.dim); segs(ctx, m + fs * 2.3, m + 2, W * 0.38, fs * 0.5, Math.ceil(st.hp), MAXHP);
     text(ctx, 'エネルギー', m, m + fs * 1.1, fs * 0.75, C.dim); bar(ctx, m + fs * 4.2, m + fs * 1.1 + 2, W * 0.38 - fs * 1.9, fs * 0.5, st.en / 100, C.cyan);
     text(ctx, 'ノヴァ', m, m + fs * 2.2, fs * 0.75, C.dim); bar(ctx, m + fs * 3, m + fs * 2.2 + 2, W * 0.38 - fs * 0.7, fs * 0.5, st.ult / 100, st.ult >= 100 ? (Math.floor(t * 6) % 2 ? '#ff8ad8' : '#ffe14a') : '#c69bff');
-    const chip = st.mode === 'combat' ? (G.tiltOn ? '戦闘モード：かたむけて向きを変える' : '戦闘モード：L1/R1 左右　L2/R2 上下') : st.scan ? 'スキャン中：船は動けない' : '探索中：パイロットと同じ前を見る';
-    text(ctx, chip, m, m + fs * 3.3, fs * 0.72, st.mode === 'combat' ? C.red : st.scan ? C.cyan : C.hp);
-    if (st.scan && st.mode === 'combat') text(ctx, 'スキャン中で船は動けない！ 守って！', m, m + fs * 4.3, fs * 0.72, C.cyan);
+    const chip = st.mode === 'combat' ? '戦闘モード' : st.scan ? 'スキャン中：船は動けない' : '探索中';
+    text(ctx, chip, m, m + fs * 3.3, fs * 0.75, st.mode === 'combat' ? C.red : st.scan ? C.cyan : C.hp);
+    text(ctx, G.tiltOn ? 'スマホをかたむけて向きを変える' : 'L1/R1：左右　L2/R2：上下　L1+R1：前へ', m + fs * (st.mode === 'combat' ? 5 : st.scan ? 11.5 : 3.2), m + fs * 3.35, fs * 0.6, C.dim);
+    if (st.scan && st.mode === 'combat') text(ctx, 'スキャン中で船は動けない！ 守って！', m, m + fs * 4.4, fs * 0.72, C.cyan);
     if (st.pow > 0) text(ctx, `攻撃力アップ ${Math.ceil(st.pow)}`, W - m, m, fs * 0.72, C.yel, 'right');
     // how far the gunner has turned from the ship's nose
-    if (Math.abs(st.gun.gy) > 0.05 || Math.abs(st.gun.gp) > 0.05) text(ctx, `船首から ${Math.round(-st.gun.gy * 57.3)}°　${st.gun.gp > 0 ? '上' : '下'}${Math.abs(Math.round(st.gun.gp * 57.3))}°`, W - m, m + fs * 1.1, fs * 0.7, C.dim, 'right');
+    if (Math.abs(st.gun.gy) > 0.05 || Math.abs(st.gun.gp) > 0.05) text(ctx, `船首から ${st.gun.gy > 0 ? '左' : '右'}${Math.abs(Math.round(W3.wrapA(st.gun.gy) * 57.3))}°　${st.gun.gp > 0 ? '上' : '下'}${Math.abs(Math.round(st.gun.gp * 57.3))}°`, W - m, m + fs * 1.1, fs * 0.7, C.dim, 'right');
     messages(ctx, W, VH * 0.22, fs);
-    // bottom: combo buffer + skills
-    // compact 2-column skill grid
-    const colW = (W - m * 2) / 2, ks = Math.min(colW / 6.2, fs * 1.15), cellH = fs * 0.75 + ks * 1.1;
-    const rowsList = Object.entries(SKILLS).map(([k, s]) => [s.jp, s.combo, 'X', ctl.cds[k] || 0, k]).concat([[ULT.jp, ULT.combo, 'Y', st.ult >= 100 ? 0 : 1, 'ult']]);
-    const panelH = Math.ceil(rowsList.length / 2) * cellH + ks * 1.5, py = VH - panelH;
-    ctx.fillStyle = 'rgba(5,6,13,0.62)'; ctx.fillRect(0, py, W, panelH);
-    if (ctl.buf.length) ctl.buf.forEach((k, i) => key(ctx, k, m + ks * 0.5 + i * ks * 1.05, py + ks * 0.65, ks * 0.9, 'on', t));
-    else text(ctx, '十字→X：スキル　A：機関砲　B：ためてビーム　Y長押し：スキャン', W / 2, py + ks * 0.25, fs * 0.6, C.dim, 'center');
-    rowsList.forEach(([name, combo, fin, cd, k], i) => {
-      const x0 = m + (i % 2) * colW, y0 = py + ks * 1.4 + Math.floor(i / 2) * cellH;
-      const ready = cd <= 0, w = tg && tg.d && tg.d.weak && tg.d.weak.includes(k) && Book.has('e', tg.type);
-      ctx.globalAlpha = ready ? 1 : 0.38;
-      text(ctx, name + (!ready && k !== 'ult' ? ` ${Math.ceil(cd)}` : ''), x0, y0, fs * 0.62, w ? C.yel : k === 'ult' ? '#ff8ad8' : C.ink);
-      combo.concat([fin]).forEach((kk, j) => key(ctx, kk, x0 + ks * 0.45 + j * ks * 0.95, y0 + fs * 0.75 + ks * 0.45, ks * 0.8, 'on', t));
-      ctx.globalAlpha = 1;
-    });
+    // bottom: what you are typing; the full skill list only in training (otherwise it lives in the guidebook)
+    let py;
+    if (G.training) {
+      const colW = (W - m * 2) / 2, ks = Math.min(colW / 6.2, fs * 1.15), cellH = fs * 0.75 + ks * 1.1;
+      const rowsList = Object.entries(SKILLS).map(([k, s]) => [s.jp, s.combo, 'X', ctl.cds[k] || 0, k]).concat([[ULT.jp, ULT.combo, 'Y', st.ult >= 100 ? 0 : 1, 'ult']]);
+      const panelH = Math.ceil(rowsList.length / 2) * cellH + ks * 1.5; py = VH - panelH;
+      ctx.fillStyle = 'rgba(5,6,13,0.62)'; ctx.fillRect(0, py, W, panelH);
+      if (ctl.buf.length) ctl.buf.forEach((k, i) => key(ctx, k, m + ks * 0.5 + i * ks * 1.05, py + ks * 0.65, ks * 0.9, 'on', t));
+      else text(ctx, 'トレーニング：十字→X スキル　A 機関砲　B ためてビーム　Y長押し スキャン', W / 2, py + ks * 0.25, fs * 0.58, C.dim, 'center');
+      rowsList.forEach(([name, combo, fin, cd, k], i) => {
+        const x0 = m + (i % 2) * colW, y0 = py + ks * 1.4 + Math.floor(i / 2) * cellH;
+        const ready = cd <= 0, w = tg && tg.d && tg.d.weak && tg.d.weak.includes(k) && Book.has('e', tg.type);
+        ctx.globalAlpha = ready ? 1 : 0.38;
+        text(ctx, name + (!ready && k !== 'ult' ? ` ${Math.ceil(cd)}` : ''), x0, y0, fs * 0.62, w ? C.yel : k === 'ult' ? '#ff8ad8' : C.ink);
+        combo.concat([fin]).forEach((kk, j) => key(ctx, kk, x0 + ks * 0.45 + j * ks * 0.95, y0 + fs * 0.75 + ks * 0.45, ks * 0.8, 'on', t));
+        ctx.globalAlpha = 1;
+      });
+    } else {
+      const ks = Math.min(W / 9, fs * 1.6), h = ks * 1.5; py = VH - h;
+      if (ctl.buf.length) { ctx.fillStyle = 'rgba(5,6,13,0.55)'; ctx.fillRect(0, py, W, h); ctl.buf.forEach((k, i) => key(ctx, k, W / 2 + (i - (ctl.buf.length - 1) / 2) * ks * 1.1, py + h / 2, ks * 0.9, 'on', t)); }
+      else text(ctx, 'スキルのコンボは 図鑑（SELECT）で', W / 2, VH - fs * 1.2, fs * 0.6, C.dim, 'center');
+      // cooldowns as small dots so you know when skills are back
+      const cds = Object.keys(SKILLS).filter(k => ctl.cds[k] > 0);
+      if (cds.length) text(ctx, cds.map(k => `${SKILLS[k].jp} ${Math.ceil(ctl.cds[k])}`).join('　'), W / 2, py - fs * 1.0, fs * 0.58, C.dim, 'center');
+    }
     if (G.partnerText) text(ctx, G.partnerText, m, py - fs * 1.1, fs * 0.6, G.partnerOk ? C.dim : C.red);
     FX3.overlays(ctx, W, VH);
     ctx.restore();

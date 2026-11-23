@@ -80,7 +80,7 @@
   }
 
   // ---------- LRU cache of finished sprites ----------
-  const cache = new Map(), MAX = 900, AB = 64;
+  const cache = new Map(), MAX = 1400, AB = 72;
   function sprite(id, fi, ang, elevDeg) {
     const m = BY_ID[id]; if (!m || !m.frames) return null;
     fi = fi % m.F;
@@ -117,7 +117,11 @@
     else { dx = Math.round(x - sp.cx * scale); dy = Math.round(y - ay * scale); }
     const dw = Math.max(1, Math.round(sp.w * scale)), dh = Math.max(1, Math.round(sp.h * scale));
     if (opt.alpha != null) ctx.globalAlpha = opt.alpha;
+    // shrinking pixel art with nearest-neighbour makes it flicker and look like a mosaic: smooth it when small
+    const smooth = scale < 1.6 || (opt.roll && scale < 3);
+    ctx.imageSmoothingEnabled = smooth; if (smooth) ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(sp.c, dx, dy, dw, dh);
+    ctx.imageSmoothingEnabled = false;
     if (opt.flash) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = opt.flash; ctx.drawImage(sp.c, dx, dy, dw, dh); ctx.restore(); }
     if (sp.g && !opt.noGlow) {
       ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (opt.alpha != null ? opt.alpha : 1) * 0.9;
@@ -130,7 +134,7 @@
     return true;
   }
   const ready = id => { const m = BY_ID[id]; return !!(m && m.frames); };
-  function size(id) { const m = BY_ID[id]; return m ? { w: m.w, h: m.h, d: m.d, diag: m.diag, F: m.F, fps: m.fps || 10, bob: m.bob || 0 } : null; }
+  function size(id) { const m = BY_ID[id]; return m ? { w: m.w, h: m.h, d: m.d, diag: m.diag, F: m.F, fps: m.fps || 10, bob: m.bob || 0, K: m.K || 2 } : null; }
 
   window.Stack = { draw, sprite, size, ready, BY_ID, cacheSize: () => cache.size };
 })();

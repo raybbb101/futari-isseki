@@ -21,10 +21,11 @@
     const toC = norm(sub(cam.p, p));
     const e = Math.asin(clamp(dot(toC, up), -1, 1));
     const left = cross(up, fwd), a = Math.atan2(dot(toC, left), dot(toC, fwd));
-    let ang = Math.PI / 2 + a;
+    const ang = Math.PI / 2 + a;
     const roll = Math.atan2(dot(up, cam.B.r), dot(up, cam.B.u));
-    const flip = e < 0; if (flip) ang = -ang;
-    const ok = Stack.draw(ctx, mid, fi, ang, bucket(Math.abs(e) / D2R), pr.x, pr.y, size / 2, Object.assign({ center: true, roll, flip }, opt));
+    // seen from below we still show the stack the right way up (no mirror flip, so lights stay on top)
+    const K = (Stack.size(mid) || { K: 2 }).K;
+    const ok = Stack.draw(ctx, mid, fi, ang, bucket(Math.abs(e) / D2R), pr.x, pr.y, size / K, Object.assign({ center: true, roll }, opt));
     if (!ok) { ctx.fillStyle = 'rgba(200,210,255,0.6)'; const r = Math.max(2, size * 8); ctx.fillRect(pr.x - r / 2, pr.y - r / 2, r, r); }
     return pr;
   }
@@ -32,7 +33,8 @@
   // ---------- sky: stars, nebula and far (fake) planets that never get closer ----------
   const SKY = (() => { const r = W3.rngOf(77), s = []; for (let i = 0; i < 700; i++) { const z = r() * 2 - 1, a = r() * TAU, q = Math.sqrt(1 - z * z); s.push({ v: [Math.cos(a) * q, Math.sin(a) * q, z], b: r(), z: r() }); } return s; })();
   const NEB = [{ v: norm([1, 0.4, 0.3]), c: 'rgba(120,60,190,0.22)', s: 0.9 }, { v: norm([-0.6, -0.8, -0.2]), c: 'rgba(40,110,190,0.2)', s: 1.1 }, { v: norm([0.1, -0.2, 1]), c: 'rgba(190,70,120,0.14)', s: 0.8 }, { v: norm([-0.3, 0.9, -0.6]), c: 'rgba(60,160,150,0.12)', s: 0.9 }];
-  const FAKE = [{ m: 'gas', v: norm([0.8, -0.5, 0.35]), a: 0.09 }, { m: 'violet', v: norm([-0.7, 0.6, 0.2]), a: 0.04 }, { m: 'moon', v: norm([0.2, 0.9, -0.3]), a: 0.025 }, { m: 'ice', v: norm([-0.4, -0.6, 0.65]), a: 0.035 }, { m: 'lava', v: norm([0.5, 0.2, -0.8]), a: 0.03 }];
+  // far-away worlds of other stars: tiny and dim, they never get closer
+  const FAKE = [{ v: norm([0.6, -0.5, 0.6]), a: 0.012, c: [150, 120, 220] }, { v: norm([-0.7, 0.5, -0.5]), a: 0.008, c: [120, 190, 230] }, { v: norm([0.2, 0.9, 0.4]), a: 0.006, c: [230, 170, 120] }];
   function drawSky(ctx, t) {
     const { W, H, focal } = cam;
     ctx.fillStyle = '#05060d'; ctx.fillRect(0, 0, W, H);
@@ -43,10 +45,11 @@
       const sz = s.z > 0.85 ? 2 : 1; ctx.fillRect(Math.round(p.x), Math.round(p.y), sz, sz);
     }
     for (const f of FAKE) {
-      const p = projDir(f.v); if (!p) continue;
-      const pl = PLANETS.find(x => x.m === f.m), px = focal * f.a * 2;
-      if (p.x < -px || p.y < -px || p.x > W + px || p.y > H + px) continue;
-      Stack.draw(ctx, f.m, 0, t * 0.01, 30, p.x, p.y, px / (pl.mr * 2) / 2 * 1.05, { center: true, alpha: 0.75, noGlow: true });
+      const p = projDir(f.v); if (!p) continue; const r = Math.max(1.5, focal * f.a);
+      if (p.x < -r || p.y < -r || p.x > W + r || p.y > H + r) continue;
+      const g = ctx.createRadialGradient(p.x - r * 0.35, p.y - r * 0.35, r * 0.1, p.x, p.y, r);
+      g.addColorStop(0, `rgba(${f.c[0]},${f.c[1]},${f.c[2]},0.85)`); g.addColorStop(1, `rgba(${f.c[0] >> 2},${f.c[1] >> 2},${f.c[2] >> 2},0.6)`);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.fill();
     }
   }
 
@@ -83,16 +86,12 @@
   function drawScene(ctx, st, t, opt) {
     const list = [];
     // planets (real ones get bigger as you approach)
-    PLANETS.forEach((pl, i) => {
-      const pr = proj(pl.p); if (!pr) return;
-      const rad = pr.k * pl.R; if (rad < 0.6) return;
-      if (pr.x + rad < -50 || pr.x - rad > cam.W + 50 || pr.y + rad < -50 || pr.y - rad > cam.H + 50) return;
-      list.push({ z: pr.z + pl.R * 0.5, draw: () => {
-        const g = ctx.createRadialGradient(pr.x, pr.y, rad * 0.85, pr.x, pr.y, rad * 1.35);
-        g.addColorStop(0, 'rgba(120,180,255,0.18)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(pr.x - rad * 1.4, pr.y - rad * 1.4, rad * 2.8, rad * 2.8);
-        drawObj(ctx, pl.m, 0, pl.p, W3.fwdOf(t * 0.004 + i, 0), [0, 0, 1], pl.R / pl.mr, { noGlow: rad > 400 });
-      } });
-    });
+    PR.tick();
+    for (const pl of PLANETS) {
+      const pr = proj(pl.p); if (!pr) continue;
+      list.push({ z: pr.z + pl.R * 0.5, draw: () => PR.draw(ctx, pl, st.T) });
+    }
+    { const sp = proj(W3.SUN.p); if (sp) list.push({ z: sp.z + W3.SUN.R, draw: () => PR.drawSun(ctx) }); }
     for (const e of st.ents.values()) {
       if (e.dead) continue;
       if (st.rep && !e.still && st.T - e.seen > 1) continue;

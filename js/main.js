@@ -17,7 +17,8 @@
   function resize() {
     const dpr = Math.min(2, devicePixelRatio || 1);
     cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
-    G.visNow = innerHeight > innerWidth ? G.vis : 1;
+    // in a game the role decides: the gunner (Pocket Taco) always uses the top part, the pilot the whole screen
+    G.visNow = G.playing ? (G.role === 'gunner' ? G.vis : 1) : (innerHeight > innerWidth ? G.vis : 1);
     document.documentElement.style.setProperty('--uih', (G.visNow * 100) + '%');
   }
   addEventListener('resize', resize); resize();
@@ -159,9 +160,16 @@
     if (mode === 'guest') { G.rep = new Replica(seed); G.world = null; G.st = G.rep; }
     else { G.world = new World(seed, { training: mode === 'solo' && role === 'gunner' }); G.rep = null; G.st = G.world; }
     G.partnerText = mode === 'solo' ? (role === 'pilot' ? 'ソロ：ガンナーは自動で撃ち続ける' : 'ソロ（トレーニング）：船は自動で飛ぶ') : G.partnerText;
-    applyTilt();
+    G.training = mode === 'solo' && role === 'gunner';
+    applyTilt(); lockOrientation(role); resize();
     show(null);
-    FX3.apply(['msg', role === 'pilot' ? 'ホーム・ステーションから発進！ 惑星をさがしてスキャンしよう' : '砲台につきました。敵が来たら自由にねらえます', 4], G.st, role);
+    FX3.apply(['msg', role === 'pilot' ? '発進！ 惑星をさがしてスキャンしよう' : '砲台につきました。L1/R1・L2/R2 で見回せます', 4], G.st, role);
+  }
+  // pilot = landscape, gunner = portrait (works when installed as an app, or in full screen)
+  async function lockOrientation(role) {
+    const want = role === 'pilot' ? 'landscape' : 'portrait';
+    try { const app = matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches; if (!app && !document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen(); } catch (e) { /* needs a tap */ }
+    try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock(want); } catch (e) { /* not allowed here */ }
   }
   async function applyTilt() {
     const want = G.playing && G.tilt[G.role];
@@ -250,7 +258,7 @@
   }
   function openPause() {
     $('pSwap').hidden = G.mode !== 'solo';
-    $('pTilt').innerHTML = `チルト（スマホをかたむけて操作）：${G.tilt[G.role] ? 'オン' : 'オフ'}<small>${G.role === 'pilot' ? '左右にかたむけて旋回・前後で上下' : '左右にかたむけて回る・前後で上下を見る（戦闘モード）'}</small>`;
+    $('pTilt').innerHTML = `チルト（スマホをかたむけて操作）：${G.tilt[G.role] ? 'オン' : 'オフ'}<small>${G.role === 'pilot' ? 'スマホを左右にかたむけて旋回、手前に起こすと上・向こうへ倒すと下' : 'スマホを左右にかたむけると回り続け、手前に起こすと上・向こうへ倒すと下を見る'}</small>`;
     $('pauseInfo').textContent = G.mode === 'solo' ? 'ソロ（お試し）' : `通信量　送信 ${(Net.sentBytes / 1024).toFixed(0)}KB ／ 受信 ${(Net.recvBytes / 1024).toFixed(0)}KB`;
     show('pause');
   }
@@ -262,26 +270,26 @@
   $('pResume').onclick = resume;
   $('pTilt').onclick = async () => { G.tilt[G.role] = !G.tilt[G.role]; store.set(G.role === 'pilot' ? 'tiltPilot' : 'tiltGunner', G.tilt[G.role]); await applyTilt(); openPause(); Menu.i = 1; Menu.paint(); };
   $('pRecenter').onclick = () => { Tilt.recenter(); FX3.toast('チルトの中心を合わせました', '#7ff6ff', 1.2); };
-  $('pSwap').onclick = () => { G.role = G.role === 'pilot' ? 'gunner' : 'pilot'; G.world.training = G.role === 'gunner'; G.partnerText = G.role === 'pilot' ? 'ソロ：ガンナーは自動で撃ち続ける' : 'ソロ（トレーニング）：船は自動で飛ぶ'; G.bot = {}; applyTilt(); resume(); };
-  $('pQuit').onclick = $('rQuit').onclick = () => { if (G.mode !== 'solo') { Net.send({ t: 'quit' }); setTimeout(() => Net.close(), 200); } G.playing = false; G.world = G.rep = null; Book.hide(); if (Tilt.on) Tilt.disable(); show('title'); };
+  $('pSwap').onclick = () => { G.role = G.role === 'pilot' ? 'gunner' : 'pilot'; G.world.training = G.role === 'gunner'; G.training = G.world.training; lockOrientation(G.role); resize(); G.partnerText = G.role === 'pilot' ? 'ソロ：ガンナーは自動で撃ち続ける' : 'ソロ（トレーニング）：船は自動で飛ぶ'; G.bot = {}; applyTilt(); resume(); };
+  $('pQuit').onclick = $('rQuit').onclick = () => { if (G.mode !== 'solo') { Net.send({ t: 'quit' }); setTimeout(() => Net.close(), 200); } G.playing = false; G.world = G.rep = null; Book.hide(); if (Tilt.on) Tilt.disable(); try { screen.orientation.unlock(); } catch (e) { /* ignore */ } resize(); show('title'); };
   $('rAgain').onclick = () => {
     if (G.mode === 'solo') begin('solo', G.role, (Math.random() * 1e9) | 0);
     else if (G.mode === 'host') { const seed = (Math.random() * 1e9) | 0; Net.send({ t: 'start', seed }); begin('host', G.role, seed); }
   };
   function showResult(reason, info, s) {
-    $('rTitle').textContent = reason === 'crash' ? `${info} に墜落…` : 'ふたり号 撃沈…';
+    $('rTitle').textContent = reason === 'crash' ? `${info} に墜落…` : reason === 'sun' ? '太陽に突入…' : 'ふたり号 撃沈…';
     $('rTitle').style.color = 'var(--red)';
     $('rStats').innerHTML = `<dt>飛んだ時間</dt><dd>${Math.floor(s.time / 60)}分${s.time % 60}秒</dd><dt>スキャンした惑星</dt><dd>${s.scansP}（図鑑 ${Book.count('p')}/${PLANETS.length}）</dd><dt>スキャンした生きもの・機体</dt><dd>${s.scansE}（図鑑 ${Book.count('e')}/${W3.BOOK_ORDER.length}）</dd><dt>たおした敵</dt><dd>${s.kills}</dd><dt>受けたダメージ</dt><dd>${s.hits}回</dd>`;
     $('rAgain').hidden = G.mode === 'guest';
-    $('rNote').textContent = (reason === 'crash' ? '惑星の近くでは引力に注意。RT の全力加速なら脱出できます。' : '') + (G.mode === 'guest' ? '　ホストが「もう一度」をえらぶと、また始まります。' : '　図鑑の記録は消えません。');
+    $('rNote').textContent = (reason === 'crash' || reason === 'sun' ? '惑星や太陽の近くでは引力に注意。RT の全力加速なら脱出できます。' : '') + (G.mode === 'guest' ? '　ホストが「もう一度」をえらぶと、また始まります。' : '　図鑑の記録は消えません。');
     show('result');
   }
 
   // ---------- settings ----------
   function paintSettings() {
     $('vis').value = Math.round(G.vis * 100); $('visV').textContent = Math.round(G.vis * 100) + '%';
-    $('stTiltP').innerHTML = `パイロットのチルト：${G.tilt.pilot ? 'オン' : 'オフ'}<small>コントローラーのスマホを左右にかたむけて旋回、前後で上下</small>`;
-    $('stTiltG').innerHTML = `ガンナーのチルト：${G.tilt.gunner ? 'オン' : 'オフ'}<small>戦闘モードで、左右にかたむけて回る・前後で上下を見る</small>`;
+    $('stTiltP').innerHTML = `パイロットのチルト：${G.tilt.pilot ? 'オン' : 'オフ'}<small>スマホを左右にかたむけて旋回、手前に起こすと上・向こうへ倒すと下（縦にまっすぐが中心）</small>`;
+    $('stTiltG').innerHTML = `ガンナーのチルト：${G.tilt.gunner ? 'オン' : 'オフ'}<small>左右にかたむけると回り続け、手前に起こすと上・向こうへ倒すと下を見る</small>`;
     $('stInvert').innerHTML = `パイロットの上下：${G.invert ? '反転（スティック下で上を向く）' : 'ふつう'}`;
     $('soundBtn').innerHTML = '音：' + (Sfx.on ? 'オン' : 'オフ');
   }
@@ -337,10 +345,11 @@
   G.debugStep = (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) { Input.poll(dt); if (G.playing) gameTick(dt); } };
 
   // ---------- loading: bake sprite stacks (the rest keeps baking in the background) ----------
-  const GAME_FRAMES = { ship: 8, raider: 4, raider_g: 4, drone: 8, drone_r: 8, mine: 8, turret: 8, boss: 6, jelly: 8, jelly_b: 8, station: 8, interceptor: 2, gunship: 2, trader: 2, probe: 4, manta: 6, whale: 6, eel: 8, beetle: 4, spore: 6 };
-  const FIRST = ['ship', 'station', 'asteroid', 'earth', 'gas', 'violet', 'moon', 'ice', 'lava', 'desert', 'planet', 'junk', 'cargo', 'satellite'];
+  const GAME_FRAMES = { ship: 6, raider: 4, raider_g: 4, drone: 8, drone_r: 8, mine: 8, turret: 8, boss: 6, jelly: 8, jelly_b: 8, station: 8, interceptor: 2, gunship: 2, trader: 2, probe: 4, manta: 6, whale: 6, eel: 8, beetle: 4, spore: 6 };
+  const FIRST = ['ship', 'station', 'asteroid', 'junk', 'cargo', 'satellite', 'raider', 'drone'];
+  const VOXEL_PLANETS = ['earth', 'gas', 'violet', 'moon', 'ice', 'lava', 'desert', 'planet'];
   (async () => {
-    const L = SS2.MODELS.filter(m => m.id !== 'gate' && m.id !== 'capsule');
+    const L = SS2.MODELS.filter(m => m.id !== 'gate' && m.id !== 'capsule' && !VOXEL_PLANETS.includes(m.id));
     for (const m of L) if (GAME_FRAMES[m.id]) m.F = GAME_FRAMES[m.id];
     const first = FIRST.map(id => L.find(m => m.id === id)).filter(Boolean), rest = L.filter(m => !FIRST.includes(m.id));
     for (let i = 0; i < first.length; i++) {
@@ -348,6 +357,8 @@
       $('loadBar').style.width = (i / first.length * 100) + '%';
       await new Promise(r => setTimeout(r, 0)); SS2.bakeModel(first[i]);
     }
+    const pids = PR.ids();
+    for (let i = 0; i < pids.length; i++) { $('loadText').textContent = `惑星をえがいています… ${i + 1} / ${pids.length}`; await new Promise(r => setTimeout(r, 0)); PR.build(pids[i]); }
     try { await document.fonts.load('16px "DotGothic16"'); } catch (e) { /* fallback font */ }
     G.loaded = true; show('title');
     for (const m of rest) { await new Promise(r => setTimeout(r, 20)); SS2.bakeModel(m); }
